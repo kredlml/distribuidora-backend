@@ -40,14 +40,17 @@ app.get("/", (req, res) => {
 });
 
 // 🚀 Espacio para las NUEVAS rutas del Problema 4 (Las iremos descomentando)
-// require("./app/routes/sucursal.routes")(app);
-// require("./app/routes/proveedor.routes")(app);
-// require("./app/routes/producto.routes")(app);
-// require("./app/routes/inventario.routes")(app);
-// require("./app/routes/pedido.routes")(app);
-// require("./app/routes/pago.routes")(app); 
+require("./app/routes/sucursal.routes")(app);
+require("./app/routes/cliente.routes")(app);
+require("./app/routes/proveedor.routes")(app);
+require("./app/routes/categoria.routes")(app);
+require("./app/routes/empleado.routes")(app);
+require("./app/routes/producto.routes")(app);
+require("./app/routes/inventario.routes")(app);
+require("./app/routes/pedido.routes")(app);
+require("./app/routes/detalle_pedido.routes")(app);
+require("./app/routes/pago.routes")(app);
 
-// Escuchar peticiones en el puerto asignado
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en el puerto ${PORT} [Ambiente: ${process.env.NODE_ENV || "development"}].`);
