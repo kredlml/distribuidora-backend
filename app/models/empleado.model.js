@@ -2,23 +2,17 @@ module.exports = (sequelize, Sequelize) => {
   const Empleado = sequelize.define("Empleado", {
     id_empleado: {
       type: Sequelize.INTEGER,
-      autoIncrement: true,
-      primaryKey: true
+      primaryKey: true,
+      autoIncrement: true
     },
-    nombre: { type: Sequelize.STRING(80), allowNull: false },
-    apellido: { type: Sequelize.STRING(80), allowNull: false },
-    puesto: { type: Sequelize.STRING(60), allowNull: false },
-    telefono: { type: Sequelize.STRING(20) },
-    email: { type: Sequelize.STRING(120), unique: true },
-    fecha_contratacion: { type: Sequelize.DATEONLY, allowNull: false },
-    activo: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
-    id_sucursal: { 
-      type: Sequelize.INTEGER, 
-      allowNull: false 
-      // La relación real la definiremos en el index.js
-    }
+    nombre: { type: Sequelize.STRING },
+    apellido: { type: Sequelize.STRING },
+    puesto: { type: Sequelize.STRING },
+    email: { type: Sequelize.STRING },
+  
+    password: { type: Sequelize.STRING }
   }, {
-    tableName: 'Empleado',
+    freezeTableName: true,
     timestamps: false
   });
   return Empleado;

@@ -1,12 +1,12 @@
 module.exports = app => {
   const reportes = require("../controllers/reporte.controller.js");
+  
+  const authJwt = require("../middlewares/authJwt.js");
   var router = require("express").Router();
 
-  // GET /api/reportes/ventas
-  router.get("/ventas", reportes.historialVentas);
-
-  // GET /api/reportes/stock-critico
-  router.get("/stock-critico", reportes.stockCritico);
+  
+  router.get("/ventas", authJwt.verificarToken, reportes.historialVentas);
+  router.get("/stock-critico", authJwt.verificarToken, reportes.stockCritico);
 
   app.use('/api/reportes', router);
 };

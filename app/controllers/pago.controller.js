@@ -1,7 +1,7 @@
 const db = require("../models");
 const Pago = db.pago;
 const Pedido = db.pedido;
-// Inicializamos Stripe con la clave de tu archivo .env
+
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); 
 
 exports.create = async (req, res) => {
@@ -24,16 +24,15 @@ exports.create = async (req, res) => {
     // 2. Lógica de integración con Stripe
     if (metodo_pago === 'STRIPE') {
       try {
-        /* IMPORTANTE: Si la clave no es válida (porque es de prueba), simularemos 
-           la respuesta para que tu API no falle en la presentación de la universidad. */
+        
         if (process.env.STRIPE_SECRET_KEY === 'sk_test_clave_de_prueba_universidad') {
            id_transaccion = 'pi_simulado_' + Math.floor(Math.random() * 1000000);
-           estado_inicial = 'COMPLETADO'; // Simulación exitosa
+           estado_inicial = 'COMPLETADO'; 
         } else {
-           // Código real para producción con cuenta de Stripe activa
+           
            const paymentIntent = await stripe.paymentIntents.create({
-             amount: Math.round(monto * 100), // Stripe exige el monto en centavos
-             currency: 'gtq', // Quetzales
+             amount: Math.round(monto * 100), 
+             currency: 'gtq', 
              payment_method_types: ['card'],
              metadata: { pedido_id: id_pedido }
            });

@@ -1,25 +1,22 @@
 const jwt = require("jsonwebtoken");
-const authConfig = require("../config/auth.config.js");
 
-const verifyToken = (req, res, next) => {
-  let token = req.headers["x-access-token"] || req.headers["authorization"];
+exports.verificarToken = (req, res, next) => {
+  
+  let tokenHeader = req.headers["authorization"];
 
-  if (token && token.startsWith("Bearer ")) {
-    token = token.slice(7);
+  if (!tokenHeader) {
+    return res.status(403).send({ message: "¡No se proporcionó un token de seguridad!" });
   }
 
-  if (!token) {
-    return res.status(403).send({ message: "No se proporcionó ningún token." });
-  }
+  
+  const token = tokenHeader.split(" ")[1];
 
-  jwt.verify(token, authConfig.secret, (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
-      return res.status(401).send({ message: "No autorizado: token inválido o expirado." });
+      return res.status(401).send({ message: "¡Token no autorizado o expirado!" });
     }
-    req.userId = decoded.id;
-    next();
+   
+    req.empleadoId = decoded.id;
+    next(); 
   });
 };
-
-const authJwt = { verifyToken };
-module.exports = authJwt;

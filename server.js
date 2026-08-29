@@ -1,4 +1,3 @@
-// Cargar dotenv al inicio según el entorno (desarrollo o producción)
 const dotenv = require("dotenv");
 const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env.development";
 dotenv.config({ path: envFile });
@@ -13,8 +12,6 @@ var corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// 🚨 PASO CRÍTICO: EL WEBHOOK DE STRIPE ANTES DEL BODY-PARSER 🚨
-// Lo dejamos comentado solo por hoy hasta que armes el nuevo controlador de pagos
 /*
 app.post(
   "/api/pago/webhook",
@@ -23,15 +20,12 @@ app.post(
 );
 */
 
-// Parsear cuerpo de peticiones (Lo normal para el resto de la app)
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Conexión y sincronización de base de datos en Neon
 const db = require("./app/models");
-db.sequelize.sync();
+db.sequelize.sync; 
 
-// Ruta de prueba inicial (Actualizada para el nuevo proyecto)
 app.get("/", (req, res) => {
   res.json({
     message: "UMG Proyecto Final - API REST Control de Inventarios",
@@ -39,7 +33,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// 🚀 Espacio para las NUEVAS rutas del Problema 4 (Las iremos descomentando)
 require("./app/routes/sucursal.routes")(app);
 require("./app/routes/cliente.routes")(app);
 require("./app/routes/proveedor.routes")(app);
@@ -51,6 +44,7 @@ require("./app/routes/pedido.routes")(app);
 require("./app/routes/detalle_pedido.routes")(app);
 require("./app/routes/pago.routes")(app);
 require("./app/routes/reporte.routes")(app); 
+require("./app/routes/auth.routes")(app);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
