@@ -1,27 +1,69 @@
 const db = require("../models");
 const DetallePedido = db.detalle_pedido;
+const Inventario = db.inventario;
+const Pedido = db.pedido;
+const sequelize = db.sequelize; // Importamos sequelize para manejar la transacción
 
 exports.create = async (req, res) => {
+  // 1. Iniciamos la transacción de seguridad
+  const t = await sequelize.transaction();
+
   try {
-    if (!req.body.cantidad || !req.body.precio_unitario || !req.body.id_pedido || !req.body.id_producto) {
-      return res.status(400).send({ message: "Cantidad, precio, id_pedido e id_producto son obligatorios." });
+    const { cantidad, precio_unitario, id_pedido, id_producto } = req.body;
+
+    if (!cantidad || !precio_unitario || !id_pedido || !id_producto) {
+      await t.rollback(); // Cancelamos si faltan datos
+      return res.status(400).send({ message: "Faltan datos obligatorios." });
     }
 
-    // Calculamos el subtotal automáticamente
-    const subtotalCalc = req.body.cantidad * req.body.precio_unitario;
+    // 2. Buscar a qué sucursal pertenece este pedido
+    const pedido = await Pedido.findByPk(id_pedido);
+    if (!pedido) {
+      await t.rollback();
+      return res.status(404).send({ message: "El pedido no existe." });
+    }
 
-    const nuevoDetalle = {
-      cantidad: req.body.cantidad,
-      precio_unitario: req.body.precio_unitario,
+    // 3. Buscar el inventario de ese producto en esa sucursal específica
+    const inventario = await Inventario.findOne({
+      where: { id_producto: id_producto, id_sucursal: pedido.id_sucursal }
+    });
+
+    if (!inventario) {
+      await t.rollback();
+      return res.status(404).send({ message: "Este producto no tiene inventario en esta sucursal." });
+    }
+
+    // 4. Validar si hay stock suficiente
+    if (inventario.cantidad_actual < cantidad) {
+      await t.rollback();
+      return res.status(400).send({ 
+        message: `Stock insuficiente. Solo hay ${inventario.cantidad_actual} unidades disponibles.` 
+      });
+    }
+
+    // 5. Crear el detalle del pedido (Agregamos { transaction: t })
+    const subtotalCalc = cantidad * precio_unitario;
+    const nuevoDetalle = await DetallePedido.create({
+      cantidad: cantidad,
+      precio_unitario: precio_unitario,
       subtotal: subtotalCalc,
-      id_pedido: req.body.id_pedido,
-      id_producto: req.body.id_producto
-    };
+      id_pedido: id_pedido,
+      id_producto: id_producto
+    }, { transaction: t });
 
-    const data = await DetallePedido.create(nuevoDetalle);
-    res.status(201).send(data);
+    // 6. Descontar la cantidad del inventario
+    await inventario.update({
+      cantidad_actual: inventario.cantidad_actual - cantidad
+    }, { transaction: t });
+
+    // 7. Confirmar y guardar todos los cambios de golpe en Neon
+    await t.commit();
+    res.status(201).send(nuevoDetalle);
+
   } catch (error) {
-    res.status(500).send({ message: error.message || "Error al agregar el detalle del pedido." });
+    // Si cualquier paso falla, deshacemos todo para evitar inconsistencias
+    await t.rollback();
+    res.status(500).send({ message: error.message || "Error al procesar la venta." });
   }
 };
 

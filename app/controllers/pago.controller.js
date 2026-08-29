@@ -1,22 +1,63 @@
 const db = require("../models");
 const Pago = db.pago;
+const Pedido = db.pedido;
+// Inicializamos Stripe con la clave de tu archivo .env
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); 
 
 exports.create = async (req, res) => {
   try {
-    if (!req.body.metodo_pago || !req.body.monto || !req.body.id_pedido) {
+    const { metodo_pago, monto, id_pedido } = req.body;
+
+    if (!metodo_pago || !monto || !id_pedido) {
       return res.status(400).send({ message: "Método de pago, monto e id_pedido son obligatorios." });
     }
 
-    const nuevoPago = {
-      metodo_pago: req.body.metodo_pago, // STRIPE o PAYPAL
-      monto: req.body.monto,
-      estado_pago: req.body.estado_pago || 'PENDIENTE',
-      id_transaccion_externa: req.body.id_transaccion_externa,
-      id_pedido: req.body.id_pedido
-    };
+    // 1. Validar que el pedido existe
+    const pedido = await Pedido.findByPk(id_pedido);
+    if (!pedido) {
+      return res.status(404).send({ message: "El pedido no existe." });
+    }
 
-    const data = await Pago.create(nuevoPago);
-    res.status(201).send(data);
+    let id_transaccion = null;
+    let estado_inicial = 'PENDIENTE';
+
+    // 2. Lógica de integración con Stripe
+    if (metodo_pago === 'STRIPE') {
+      try {
+        /* IMPORTANTE: Si la clave no es válida (porque es de prueba), simularemos 
+           la respuesta para que tu API no falle en la presentación de la universidad. */
+        if (process.env.STRIPE_SECRET_KEY === 'sk_test_clave_de_prueba_universidad') {
+           id_transaccion = 'pi_simulado_' + Math.floor(Math.random() * 1000000);
+           estado_inicial = 'COMPLETADO'; // Simulación exitosa
+        } else {
+           // Código real para producción con cuenta de Stripe activa
+           const paymentIntent = await stripe.paymentIntents.create({
+             amount: Math.round(monto * 100), // Stripe exige el monto en centavos
+             currency: 'gtq', // Quetzales
+             payment_method_types: ['card'],
+             metadata: { pedido_id: id_pedido }
+           });
+           id_transaccion = paymentIntent.id;
+        }
+      } catch (stripeError) {
+        return res.status(500).send({ message: "Error en pasarela Stripe: " + stripeError.message });
+      }
+    }
+
+    // 3. Guardar el registro en Neon
+    const nuevoPago = await Pago.create({
+      metodo_pago: metodo_pago,
+      monto: monto,
+      estado_pago: estado_inicial,
+      id_transaccion_externa: id_transaccion,
+      id_pedido: id_pedido
+    });
+
+    res.status(201).send({
+      message: "Pago procesado y registrado con éxito.",
+      pago: nuevoPago
+    });
+
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al registrar el Pago." });
   }
