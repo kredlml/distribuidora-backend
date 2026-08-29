@@ -1,14 +1,14 @@
 {
-  "name": "nodejs-express-postgresql",
+  "name": "distribuidora-backend",
   "version": "1.0.0",
-  "description": "",
-  "homepage": "https://github.com/kredlml/APIREST2025DWUMG#readme",
+  "description": "API REST para el sistema de distribuidora",
+  "homepage": "https://github.com/kredlml/distribuidora-backend#readme",
   "bugs": {
-    "url": "https://github.com/kredlml/APIREST2025DWUMG/issues"
+    "url": "https://github.com/kredlml/distribuidora-backend/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kredlml/APIREST2025DWUMG.git"
+    "url": "git+https://github.com/kredlml/distribuidora-backend.git"
   },
   "license": "ISC",
   "author": "",
@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.22.0",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.8"
+    "sequelize": "^6.37.8",
+    "stripe": "^22.6.0"
   }
 }
