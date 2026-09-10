@@ -2,6 +2,10 @@ const db = require("../models");
 const Pedido = db.pedido;
 const Inventario = db.inventario; 
 const DetallePedido = db.detalle_pedido;
+const Cliente = db.cliente;
+const Sucursal = db.sucursal;
+const Producto = db.producto;
+const Pago = db.pago; 
 
 exports.create = async (req, res) => {
  
@@ -89,5 +93,43 @@ exports.findAll = async (req, res) => {
     res.send(data);
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al recuperar los pedidos." });
+  }
+};
+
+exports.findOne = async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const pedido = await Pedido.findByPk(id, {
+      include: [
+        { 
+          model: Cliente, 
+          attributes: ['nombre', 'apellido', 'email', 'telefono'] 
+        },
+        { 
+          model: Sucursal, 
+          attributes: ['nombre', 'ciudad'] 
+        },
+        { 
+          model: db.detalle_pedido, // Usamos la variable exacta de tu index.js
+          include: [{ 
+            model: Producto, 
+            attributes: ['nombre', 'talla', 'precio_unitario'] 
+          }]
+        },
+        { 
+          model: Pago, 
+          attributes: ['monto', 'metodo_pago', 'estado_pago', 'fecha_pago'] 
+        }
+      ]
+    });
+
+    if (pedido) {
+      res.status(200).send(pedido);
+    } else {
+      res.status(404).send({ message: `No se encontró el Pedido con id=${id}.` });
+    }
+  } catch (error) {
+    res.status(500).send({ message: "Error al recuperar el Pedido: " + error.message });
   }
 };
