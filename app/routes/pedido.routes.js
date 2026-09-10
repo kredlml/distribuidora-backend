@@ -6,6 +6,7 @@ module.exports = app => {
 //Defininir, para diferenciar. 
   router.post("/", pedidos.create);
   router.get("/", pedidos.findAll);
+  router.put("/:id/estado", pedidos.updateEstado);
 
   app.use('/api/pedidos', router);
 };
