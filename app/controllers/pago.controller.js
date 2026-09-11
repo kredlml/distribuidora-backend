@@ -91,3 +91,34 @@ exports.findAll = async (req, res) => {
   }
 
 };
+exports.webhook = async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET; 
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.error("⚠️ Error de firma del Webhook:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'payment_intent.succeeded') {
+    const paymentIntent = event.data.object;
+    console.log(`💰 ¡Éxito! Stripe confirma que el banco cobró: ${paymentIntent.id}`);
+    
+    try {
+      // Actualizamos la base de datos (asumiendo que importaste el modelo Pedido arriba)
+      await db.pedido.update(
+        { estado: 'PAGADO' }, 
+        { where: { stripe_payment_id: paymentIntent.id } }
+      );
+      console.log("✅ Pedido actualizado a PAGADO de forma asíncrona.");
+    } catch (error) {
+      console.error("Error actualizando la base de datos:", error);
+    }
+  }
+
+  res.status(200).send();
+};
