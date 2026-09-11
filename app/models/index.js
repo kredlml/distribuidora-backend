@@ -33,7 +33,7 @@ const db = {};
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
 
-// 🚀 Registramos los NUEVOS modelos del ERP
+//  Modelos del ERP
 db.sucursal = require("./sucursal.model.js")(sequelize, Sequelize);
 db.cliente = require("./cliente.model.js")(sequelize, Sequelize);
 db.empleado = require("./empleado.model.js")(sequelize, Sequelize);
@@ -44,10 +44,14 @@ db.inventario = require("./inventario.model.js")(sequelize, Sequelize);
 db.pedido = require("./pedido.model.js")(sequelize, Sequelize);
 db.detalle_pedido = require("./detalle_pedido.model.js")(sequelize, Sequelize);
 db.pago = require("./pago.model.js")(sequelize, Sequelize);
-// Aquí iremos agregando: db.producto, db.inventario, etc.
+db.auditoria = require("./auditoria.model.js")(sequelize, Sequelize);
+
 db.empleado.belongsTo(db.sucursal, { foreignKey: 'id_sucursal' });
 
 db.sucursal.hasMany(db.empleado, { foreignKey: 'id_sucursal' });
+
+db.empleado.hasMany(db.auditoria, { foreignKey: 'id_empleado' });
+db.auditoria.belongsTo(db.empleado, { foreignKey: 'id_empleado' });
 
 // 1. Categoría -> Producto
 db.categoria.hasMany(db.producto, { foreignKey: 'id_categoria' });
