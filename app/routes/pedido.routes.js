@@ -9,6 +9,7 @@ module.exports = app => {
   router.post("/", pedidos.create);
   router.get("/", pedidos.findAll);
   router.get("/:id", pedidos.findOne);
+  router.put("/:id/estado", authJwt.verificarToken, pedidos.actualizarEstado);
   router.get("/:id/historial", authJwt.verificarToken, pedidos.historial);
   
   app.use('/api/pedidos', router);

@@ -150,6 +150,42 @@ exports.findOne = async (req, res) => {
   }
 };
 
+// PUT /api/pedidos/:id/estado — permite avanzar el estado del pedido (p.ej. a ENTREGADO),
+// precondición para poder solicitar devoluciones/cambios sobre ese pedido.
+const ESTADOS_PEDIDO_VALIDOS = ['PENDIENTE', 'PROCESADO', 'ENVIADO', 'ENTREGADO', 'CANCELADO'];
+
+exports.actualizarEstado = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { estado } = req.body;
+
+    if (!estado || !ESTADOS_PEDIDO_VALIDOS.includes(estado)) {
+      return res.status(400).send({
+        message: `El estado debe ser uno de: ${ESTADOS_PEDIDO_VALIDOS.join(', ')}.`
+      });
+    }
+
+    const pedido = await Pedido.findByPk(id);
+    if (!pedido) {
+      return res.status(404).send({ message: `No se encontró el Pedido con id=${id}.` });
+    }
+    if (pedido.estado === 'CANCELADO') {
+      return res.status(400).send({ message: "No se puede modificar un pedido ya cancelado." });
+    }
+
+    const estadoAnterior = pedido.estado;
+    pedido.estado = estado;
+    await pedido.save();
+
+    res.status(200).send({
+      message: `Pedido actualizado de ${estadoAnterior} a ${estado}.`,
+      pedido
+    });
+  } catch (error) {
+    res.status(500).send({ message: "Error al actualizar el estado del pedido: " + error.message });
+  }
+};
+
 // GET /api/pedidos/:id/historial — todos los movimientos de inventario ligados
 // al pedido, incluyendo los originados por devoluciones/cambios asociados a él.
 exports.historial = async (req, res) => {
