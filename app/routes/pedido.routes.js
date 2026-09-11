@@ -4,9 +4,12 @@ module.exports = app => {
 
   
 //Defininir, para diferenciar. 
+  const authJwt = require("../middlewares/authJwt.js");
+
   router.post("/", pedidos.create);
   router.get("/", pedidos.findAll);
   router.get("/:id", pedidos.findOne);
+  router.get("/:id/historial", authJwt.verificarToken, pedidos.historial);
   
   app.use('/api/pedidos', router);
   

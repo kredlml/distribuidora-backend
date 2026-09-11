@@ -52,15 +52,31 @@ exports.create = async (req, res) => {
 
       if (cantidadSolicitada === 0) break; 
 
+      let descontadoDeEsteLote = 0;
       if (loteActual.cantidad >= cantidadSolicitada) {
+        descontadoDeEsteLote = cantidadSolicitada;
         loteActual.cantidad -= cantidadSolicitada;
         await loteActual.save({ transaction: t }); 
         cantidadSolicitada = 0; 
       } else {
+        descontadoDeEsteLote = loteActual.cantidad;
         cantidadSolicitada -= loteActual.cantidad; 
         loteActual.cantidad = 0; 
         await loteActual.save({ transaction: t });
       }
+
+      // Trazabilidad: registra la salida por venta de este lote específico.
+      await db.movimiento_inventario.create({
+        id_inventario: loteActual.id_inventario,
+        id_producto: req.body.id_producto,
+        id_pedido: pedidoCreado.id_pedido,
+        id_empleado: req.body.id_empleado || null,
+        tipo_movimiento: 'VENTA',
+        cantidad: descontadoDeEsteLote,
+        estado_anterior: 'DISPONIBLE',
+        estado_nuevo: loteActual.cantidad === 0 ? 'AGOTADO' : 'DISPONIBLE',
+        observacion: `Venta asociada al pedido #${pedidoCreado.id_pedido}.`
+      }, { transaction: t });
     }
 
    
@@ -131,5 +147,37 @@ exports.findOne = async (req, res) => {
     }
   } catch (error) {
     res.status(500).send({ message: "Error al recuperar el Pedido: " + error.message });
+  }
+};
+
+// GET /api/pedidos/:id/historial — todos los movimientos de inventario ligados
+// al pedido, incluyendo los originados por devoluciones/cambios asociados a él.
+exports.historial = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const pedido = await Pedido.findByPk(id);
+    if (!pedido) {
+      return res.status(404).send({ message: `No se encontró el Pedido con id=${id}.` });
+    }
+
+    const devolucionesDelPedido = await db.devolucion.findAll({
+      where: { id_pedido: id },
+      attributes: ['id_devolucion']
+    });
+    const idsDevoluciones = devolucionesDelPedido.map(d => d.id_devolucion);
+
+    const movimientos = await db.movimiento_inventario.findAll({
+      where: {
+        [db.Sequelize.Op.or]: [
+          { id_pedido: id },
+          { id_devolucion: { [db.Sequelize.Op.in]: idsDevoluciones } }
+        ]
+      },
+      order: [['id_movimiento', 'ASC']]
+    });
+
+    res.status(200).send({ pedido, movimientos });
+  } catch (error) {
+    res.status(500).send({ message: "Error al recuperar el historial del pedido: " + error.message });
   }
 };

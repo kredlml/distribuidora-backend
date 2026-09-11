@@ -46,6 +46,7 @@ require("./app/routes/detalle_pedido.routes")(app);
 require("./app/routes/pago.routes")(app);
 require("./app/routes/reporte.routes")(app); 
 require("./app/routes/auth.routes")(app);
+require("./app/routes/devolucion.routes")(app);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
