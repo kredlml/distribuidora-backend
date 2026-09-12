@@ -12,19 +12,19 @@ var corsOptions = {
 };
 app.use(cors(corsOptions));
 
-/*
 app.post(
   "/api/pago/webhook",
   express.raw({ type: "application/json" }),
   require("./app/controllers/pago.controller.js").webhook
 );
-*/
+
+
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 const db = require("./app/models");
-db.sequelize.sync; 
+db.sequelize.sync({ alter: true });
 
 app.get("/", (req, res) => {
   res.json({

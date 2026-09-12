@@ -1,15 +1,14 @@
 const db = require("../models");
 const Sucursal = db.sucursal;
+const { registrarAuditoria } = require("../utils/logger.js");
 
-// 1. Crear y guardar una nueva Sucursal
+
 exports.create = async (req, res) => {
   try {
-    // Validación básica: campos obligatorios
     if (!req.body.nombre || !req.body.direccion || !req.body.ciudad) {
       return res.status(400).send({ message: "El nombre, dirección y ciudad son obligatorios." });
     }
 
-    // Preparar el objeto con los datos del request
     const nuevaSucursal = {
       nombre: req.body.nombre,
       direccion: req.body.direccion,
@@ -18,26 +17,24 @@ exports.create = async (req, res) => {
       activo: req.body.activo !== undefined ? req.body.activo : true
     };
 
-    // Guardar en PostgreSQL (Neon)
     const data = await Sucursal.create(nuevaSucursal);
-    res.status(201).send(data);
+    
+    
+    registrarAuditoria(req.empleadoId, "INSERTAR", "Sucursales", data.id_sucursal, `Nueva sucursal creada: ${data.nombre}`);
 
+    res.status(201).send(data);
   } catch (error) {
-    res.status(500).send({
-      message: error.message || "Ocurrió un error al crear la Sucursal."
-    });
+    res.status(500).send({ message: error.message || "Ocurrió un error al crear la Sucursal." });
   }
 };
 
-// 2. Obtener todas las Sucursales
+
 exports.findAll = async (req, res) => {
   try {
     const data = await Sucursal.findAll();
     res.send(data);
   } catch (error) {
-    res.status(500).send({
-      message: error.message || "Ocurrió un error al recuperar las sucursales."
-    });
+    res.status(500).send({ message: error.message || "Ocurrió un error al recuperar las sucursales." });
   }
 };
 
@@ -48,11 +45,34 @@ exports.update = async (req, res) => {
     const [num] = await Sucursal.update(req.body, { where: { id_sucursal: id } });
 
     if (num == 1) {
+      // 🔥 AUDITORÍA: Registramos quién modificó los datos
+      registrarAuditoria(req.empleadoId, "ACTUALIZAR", "Sucursales", id, "Datos de la sucursal modificados");
+      
       res.send({ message: "La sucursal fue actualizada exitosamente." });
     } else {
       res.status(404).send({ message: `No se puede actualizar la sucursal con id=${id}. Tal vez no fue encontrada o el body está vacío.` });
     }
   } catch (error) {
     res.status(500).send({ message: "Error al actualizar la sucursal con id=" + req.params.id });
+  }
+};
+
+
+exports.delete = async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const num = await db.sucursal.destroy({ where: { id_sucursal: id } });
+
+    if (num == 1) {
+      
+      registrarAuditoria(req.empleadoId, "ELIMINAR", "Sucursales", id, "Sucursal eliminada permanentemente del sistema");
+      
+      res.send({ message: "La sucursal fue eliminada con éxito." });
+    } else {
+      res.send({ message: `No se pudo eliminar la sucursal con id=${id}.` });
+    }
+  } catch (err) {
+    res.status(500).send({ message: "No se pudo eliminar la sucursal con id=" + id });
   }
 };
