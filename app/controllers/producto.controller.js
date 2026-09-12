@@ -3,7 +3,7 @@ const Producto = db.producto;
 
 exports.create = async (req, res) => {
   try {
-    // Validar campos obligatorios (incluyendo la llave foránea de categoría)
+    // Validar campos obligatorios 
     if (!req.body.nombre || !req.body.precio_unitario || !req.body.id_categoria) {
       return res.status(400).send({ message: "El nombre, precio unitario y id_categoria son obligatorios." });
     }

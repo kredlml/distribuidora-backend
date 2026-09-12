@@ -61,7 +61,7 @@ exports.create = async (req, res) => {
     res.status(201).send(nuevoDetalle);
 
   } catch (error) {
-    // Si cualquier paso falla, deshacemos todo para evitar inconsistencias
+    
     await t.rollback();
     res.status(500).send({ message: error.message || "Error al procesar la venta." });
   }

@@ -3,7 +3,7 @@ module.exports = app => {
   const authJwt = require("../middlewares/authJwt.js");
   var router = require("express").Router();
 
-  // El cliente (o el vendedor que atiende el mostrador) registra la solicitud.
+  // El cliente registra la solicitud.
   router.post("/", devoluciones.create);
   router.get("/", devoluciones.findAll);
   router.get("/:id", devoluciones.findOne);

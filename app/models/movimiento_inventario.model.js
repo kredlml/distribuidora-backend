@@ -5,8 +5,7 @@ module.exports = (sequelize, Sequelize) => {
     id_producto: { type: Sequelize.INTEGER, allowNull: false },
     id_pedido: { type: Sequelize.INTEGER, allowNull: true },
     id_devolucion: { type: Sequelize.INTEGER, allowNull: true },
-    // Empleado responsable de la operación. NULL cuando el movimiento lo
-    // origina el propio cliente (p.ej. solicitud de devolución) o el sistema.
+    
     id_empleado: { type: Sequelize.INTEGER, allowNull: true },
     tipo_movimiento: {
       type: Sequelize.ENUM(
@@ -29,8 +28,7 @@ module.exports = (sequelize, Sequelize) => {
     fecha_movimiento: { type: Sequelize.DATE, defaultValue: Sequelize.NOW }
   }, {
     tableName: 'MovimientoInventario',
-    // Sin timestamps de Sequelize: el historial es inmutable y solo se crea (create),
-    // nunca se expone update/delete desde el controlador.
+    
     timestamps: false
   });
   return MovimientoInventario;
