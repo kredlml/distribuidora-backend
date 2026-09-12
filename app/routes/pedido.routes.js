@@ -1,17 +1,14 @@
 module.exports = app => {
-  const pedidos = require("../controllers/pedido.controller.js");
-  var router = require("express").Router();
+    const pedidos = require("../controllers/pedido.controller.js");
+    const { verificarToken, isCajero } = require("../middlewares/authJwt.js");
+    var router = require("express").Router();
 
-  
-//Defininir, para diferenciar. 
-  const authJwt = require("../middlewares/authJwt.js");
+    router.post("/", [verificarToken, isCajero], pedidos.create);
 
-  router.post("/", pedidos.create);
-  router.get("/", pedidos.findAll);
-  router.get("/:id", pedidos.findOne);
-  router.put("/:id/estado", authJwt.verificarToken, pedidos.actualizarEstado);
-  router.get("/:id/historial", authJwt.verificarToken, pedidos.historial);
-  
-  app.use('/api/pedidos', router);
-  
+    router.get("/", verificarToken, pedidos.findAll);
+    router.get("/:id", verificarToken, pedidos.findOne);
+    router.get("/:id/estado", verificarToken, pedidos.actualizarEstado);
+    router.get("/:id/historial", verificarToken, pedidos.historial);
+
+    app.use("/api/pedidos", router);
 };
