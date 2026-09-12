@@ -1,11 +1,23 @@
 module.exports = (sequelize, Sequelize) => {
   const Inventario = sequelize.define("Inventario", {
-    id_producto: { type: Sequelize.INTEGER, primaryKey: true },
-    id_sucursal: { type: Sequelize.INTEGER, primaryKey: true },
-    cantidad_actual: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 0 },
-    stock_minimo: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 0 }
+    id_inventario: {
+      type: Sequelize.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+   
+    cantidad: { type: Sequelize.INTEGER },
+    id_producto: { type: Sequelize.INTEGER },
+    id_sucursal: { type: Sequelize.INTEGER },
+    
+    lote: { type: Sequelize.STRING },
+    fecha_caducidad: { type: Sequelize.DATEONLY },
+    estado: { 
+      type: Sequelize.STRING, 
+      defaultValue: 'DISPONIBLE' 
+    }
   }, {
-    tableName: 'Inventario',
+    freezeTableName: true,
     timestamps: false
   });
   return Inventario;

@@ -24,7 +24,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 const db = require("./app/models");
-db.sequelize.sync; 
+db.sequelize.sync({ alter: true });
+
 
 app.get("/", (req, res) => {
   res.json({
@@ -45,6 +46,8 @@ require("./app/routes/detalle_pedido.routes")(app);
 require("./app/routes/pago.routes")(app);
 require("./app/routes/reporte.routes")(app); 
 require("./app/routes/auth.routes")(app);
+require("./app/routes/devolucion.routes")(app);
+require("./app/routes/auditoria.routes")(app);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {

@@ -33,3 +33,25 @@ exports.findAll = async (req, res) => {
     res.status(500).send({ message: error.message || "Error al recuperar los productos." });
   }
 };
+
+// GET /api/productos/:id/historial — trazabilidad completa de una prenda/producto:
+// ventas, devoluciones solicitadas/recibidas, revisiones y reintegraciones/cambios.
+exports.historial = async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const producto = await Producto.findByPk(id);
+    if (!producto) {
+      return res.status(404).send({ message: `No se encontró el Producto con id=${id}.` });
+    }
+
+    const movimientos = await db.movimiento_inventario.findAll({
+      where: { id_producto: id },
+      order: [['id_movimiento', 'ASC']]
+    });
+
+    res.status(200).send({ producto, movimientos });
+  } catch (error) {
+    res.status(500).send({ message: "Error al recuperar el historial del producto: " + error.message });
+  }
+};
