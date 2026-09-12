@@ -45,7 +45,7 @@ exports.update = async (req, res) => {
     const [num] = await Sucursal.update(req.body, { where: { id_sucursal: id } });
 
     if (num == 1) {
-      // 🔥 AUDITORÍA: Registramos quién modificó los datos
+      // AUDITORÍA: Registramos quién modificó los datos
       registrarAuditoria(req.empleadoId, "ACTUALIZAR", "Sucursales", id, "Datos de la sucursal modificados");
       
       res.send({ message: "La sucursal fue actualizada exitosamente." });
