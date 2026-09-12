@@ -28,7 +28,7 @@ module.exports = (sequelize, Sequelize) => {
   }, {
     // Configuraciones adicionales del modelo
     tableName: 'Sucursal',
-    timestamps: false // Apagamos los timestamps automáticos por ahora para respetar tu SQL
+    timestamps: false 
   });
 
   return Sucursal;

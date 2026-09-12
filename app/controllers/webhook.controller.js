@@ -13,14 +13,14 @@ exports.stripeWebhook = async (req, res) => {
     
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
-    console.error("⚠️ Error de firma del Webhook:", err.message);
+    console.error("Error de firma del Webhook:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   
   if (event.type === 'payment_intent.succeeded') {
     const paymentIntent = event.data.object;
-    console.log(`💰 ¡Éxito! Stripe confirma que el banco cobró: ${paymentIntent.id}`);
+    console.log(`¡Éxito! Stripe confirma que el banco cobró: ${paymentIntent.id}`);
     
     try {
       
@@ -28,13 +28,13 @@ exports.stripeWebhook = async (req, res) => {
         { estado: 'PAGADO' }, 
         { where: { stripe_payment_id: paymentIntent.id } }
       );
-      console.log("✅ Base de datos actualizada a PAGADO.");
+      console.log("Base de datos actualizada a PAGADO.");
     } catch (error) {
       console.error("Error actualizando la base de datos:", error);
     }
   } else if (event.type === 'payment_intent.payment_failed') {
     const paymentIntent = event.data.object;
-    console.log(`❌ El cobro rebotó o la tarjeta fue declinada: ${paymentIntent.id}`);
+    console.log(`El cobro rebotó o la tarjeta fue declinada: ${paymentIntent.id}`);
     
   }
 
