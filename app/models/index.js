@@ -33,7 +33,7 @@ const db = {};
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
 
-//  Modelos del ERP
+// Registramos los NUEVOS modelos del ERP
 db.sucursal = require("./sucursal.model.js")(sequelize, Sequelize);
 db.cliente = require("./cliente.model.js")(sequelize, Sequelize);
 db.empleado = require("./empleado.model.js")(sequelize, Sequelize);
@@ -49,13 +49,13 @@ db.pago = require("./pago.model.js")(sequelize, Sequelize);
 db.devolucion = require("./devolucion.model.js")(sequelize, Sequelize);
 db.detalle_devolucion = require("./detalle_devolucion.model.js")(sequelize, Sequelize);
 db.movimiento_inventario = require("./movimiento_inventario.model.js")(sequelize, Sequelize);
-// Aquí iremos agregando: db.producto, db.inventario, etc.
 db.auditoria = require("./auditoria.model.js")(sequelize, Sequelize);
-
+// Aquí iremos agregando: db.producto, db.inventario, etc.
 db.empleado.belongsTo(db.sucursal, { foreignKey: 'id_sucursal' });
 
 db.sucursal.hasMany(db.empleado, { foreignKey: 'id_sucursal' });
 
+// Relaciones de Auditoria (registro genérico de acciones administrativas)
 db.empleado.hasMany(db.auditoria, { foreignKey: 'id_empleado' });
 db.auditoria.belongsTo(db.empleado, { foreignKey: 'id_empleado' });
 

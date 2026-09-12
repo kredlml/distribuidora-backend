@@ -8,6 +8,7 @@ const Inventario = db.inventario;
 const MovimientoInventario = db.movimiento_inventario;
 const Op = db.Sequelize.Op;
 const { ESTADOS, validarTransicion, esEstadoFinal } = require("../utils/estadosDevolucion");
+const { registrarAuditoria } = require("../utils/auditoria");
 
 // Registra un movimiento de inventario dentro de una transacción. El historial
 // es de solo-creación: este es el único lugar del proyecto donde se debe
@@ -237,6 +238,14 @@ async function transicionSimple(req, res, estadoNuevo) {
     if (req.empleadoId) devolucion.id_empleado_gestor = req.empleadoId;
     await devolucion.save({ transaction: t });
 
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: `DEVOLUCION_${estadoNuevo}`,
+      tabla_afectada: 'Devolucion',
+      registro_afectado_id: devolucion.id_devolucion,
+      detalles: `Devolución #${devolucion.id_devolucion} cambiada de ${estadoAnterior} a ${estadoNuevo}.`
+    }, t);
+
     await t.commit();
     res.status(200).send({ message: `Devolución actualizada a ${estadoNuevo}.`, estado_anterior: estadoAnterior, devolucion });
   } catch (error) {
@@ -282,6 +291,14 @@ exports.recibir = async (req, res) => {
     devolucion.fecha_actualizacion = new Date();
     devolucion.id_empleado_gestor = req.empleadoId;
     await devolucion.save({ transaction: t });
+
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: 'DEVOLUCION_RECIBIDA',
+      tabla_afectada: 'Devolucion',
+      registro_afectado_id: devolucion.id_devolucion,
+      detalles: `Devolución #${devolucion.id_devolucion} recibida físicamente en sucursal.`
+    }, t);
 
     await t.commit();
     res.status(200).send({ message: "Devolución marcada como recibida.", devolucion });
@@ -352,6 +369,14 @@ exports.revisar = async (req, res) => {
     devolucion.id_empleado_gestor = req.empleadoId;
     await devolucion.save({ transaction: t });
 
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: `DEVOLUCION_${estadoFinal}`,
+      tabla_afectada: 'Devolucion',
+      registro_afectado_id: devolucion.id_devolucion,
+      detalles: `Devolución #${devolucion.id_devolucion} revisada. Resultado: ${estadoFinal}.`
+    }, t);
+
     await t.commit();
     res.status(200).send({ message: `Revisión completada. Devolución en estado ${estadoFinal}.`, devolucion });
   } catch (error) {
@@ -414,6 +439,14 @@ exports.reintegrar = async (req, res) => {
     devolucion.fecha_actualizacion = new Date();
     devolucion.id_empleado_gestor = req.empleadoId;
     await devolucion.save({ transaction: t });
+
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: 'DEVOLUCION_REINTEGRADA',
+      tabla_afectada: 'Devolucion',
+      registro_afectado_id: devolucion.id_devolucion,
+      detalles: `Devolución #${devolucion.id_devolucion} reintegrada al inventario de la sucursal ${id_sucursal}.`
+    }, t);
 
     await t.commit();
     res.status(200).send({ message: "Devolución reintegrada al inventario.", devolucion });
@@ -505,6 +538,14 @@ exports.cambiar = async (req, res) => {
     devolucion.fecha_actualizacion = new Date();
     devolucion.id_empleado_gestor = req.empleadoId;
     await devolucion.save({ transaction: t });
+
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: 'DEVOLUCION_CAMBIADA',
+      tabla_afectada: 'Devolucion',
+      registro_afectado_id: devolucion.id_devolucion,
+      detalles: `Devolución #${devolucion.id_devolucion} procesada como cambio de variante en la sucursal ${id_sucursal}.`
+    }, t);
 
     await t.commit();
     res.status(200).send({ message: "Cambio de variante procesado correctamente.", devolucion });

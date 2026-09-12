@@ -6,6 +6,7 @@ const Cliente = db.cliente;
 const Sucursal = db.sucursal;
 const Producto = db.producto;
 const Pago = db.pago; 
+const { registrarAuditoria } = require("../utils/auditoria");
 
 exports.create = async (req, res) => {
  
@@ -155,34 +156,49 @@ exports.findOne = async (req, res) => {
 const ESTADOS_PEDIDO_VALIDOS = ['PENDIENTE', 'PROCESADO', 'ENVIADO', 'ENTREGADO', 'CANCELADO'];
 
 exports.actualizarEstado = async (req, res) => {
+  const t = await db.sequelize.transaction();
   try {
     const id = req.params.id;
     const { estado } = req.body;
 
     if (!estado || !ESTADOS_PEDIDO_VALIDOS.includes(estado)) {
-      return res.status(400).send({
-        message: `El estado debe ser uno de: ${ESTADOS_PEDIDO_VALIDOS.join(', ')}.`
-      });
+      const err = new Error(`El estado debe ser uno de: ${ESTADOS_PEDIDO_VALIDOS.join(', ')}.`);
+      err.status = 400;
+      throw err;
     }
 
-    const pedido = await Pedido.findByPk(id);
+    const pedido = await Pedido.findByPk(id, { transaction: t });
     if (!pedido) {
-      return res.status(404).send({ message: `No se encontró el Pedido con id=${id}.` });
+      const err = new Error(`No se encontró el Pedido con id=${id}.`);
+      err.status = 404;
+      throw err;
     }
     if (pedido.estado === 'CANCELADO') {
-      return res.status(400).send({ message: "No se puede modificar un pedido ya cancelado." });
+      const err = new Error("No se puede modificar un pedido ya cancelado.");
+      err.status = 400;
+      throw err;
     }
 
     const estadoAnterior = pedido.estado;
     pedido.estado = estado;
-    await pedido.save();
+    await pedido.save({ transaction: t });
 
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: 'PEDIDO_ESTADO_ACTUALIZADO',
+      tabla_afectada: 'Pedido',
+      registro_afectado_id: pedido.id_pedido,
+      detalles: `Pedido #${pedido.id_pedido} cambiado de ${estadoAnterior} a ${estado}.`
+    }, t);
+
+    await t.commit();
     res.status(200).send({
       message: `Pedido actualizado de ${estadoAnterior} a ${estado}.`,
       pedido
     });
   } catch (error) {
-    res.status(500).send({ message: "Error al actualizar el estado del pedido: " + error.message });
+    await t.rollback();
+    res.status(error.status || 500).send({ message: error.message || "Error al actualizar el estado del pedido." });
   }
 };
 
