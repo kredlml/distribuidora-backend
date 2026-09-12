@@ -1,11 +1,11 @@
 module.exports = app => {
   const auditorias = require("../controllers/auditoria.controller.js");
-  const authJwt = require("../middlewares/authJwt.js");
+  const { verificarToken, isAdmin } = require("../middlewares/authJwt.js");
   var router = require("express").Router();
 
-  // Datos de auditoría: solo personal autenticado puede escribir/consultar.
-  router.post("/", authJwt.verificarToken, auditorias.create);
-  router.get("/", authJwt.verificarToken, auditorias.findAll);
+  // Datos de auditoría: son sensibles, solo Admin puede escribir/consultar.
+  router.post("/", [verificarToken, isAdmin], auditorias.create);
+  router.get("/", [verificarToken, isAdmin], auditorias.findAll);
 
   app.use('/api/auditoria', router);
 };
