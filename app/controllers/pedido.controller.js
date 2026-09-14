@@ -89,10 +89,12 @@ exports.create = async (req, res) => {
       id_producto: req.body.id_producto
     }, { transaction: t });
 
+    pedidoCreado.total = (req.body.cantidad * (req.body.precio_unitario || 0));
+    await pedidoCreado.save({ transaction: t });
     
     await t.commit();
     res.status(201).send({ 
-      message: "Venta procesada exitosamente con motor FIFO.",
+      message: "Venta procesada exitosamente",
       pedido: pedidoCreado
     });
 
