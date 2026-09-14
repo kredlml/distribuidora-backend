@@ -7,7 +7,10 @@ module.exports = (sequelize, Sequelize) => {
     color: { type: Sequelize.STRING(40) },
     precio_unitario: { type: Sequelize.DECIMAL(10, 2), allowNull: false },
     activo: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
-    id_categoria: { type: Sequelize.INTEGER }
+    id_categoria: { type: Sequelize.INTEGER },
+    // Agrupa variantes (talla/color) de una misma prenda. Si es NULL, el producto
+    // es "base" o no forma parte de un grupo de variantes. Usado para cambios de talla.
+    id_producto_padre: { type: Sequelize.INTEGER, allowNull: true }
   }, {
     tableName: 'Producto',
     timestamps: false
