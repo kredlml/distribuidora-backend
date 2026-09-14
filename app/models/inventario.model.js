@@ -5,13 +5,10 @@ module.exports = (sequelize, Sequelize) => {
       primaryKey: true,
       autoIncrement: true
     },
-   
     cantidad: { type: Sequelize.INTEGER },
     id_producto: { type: Sequelize.INTEGER },
     id_sucursal: { type: Sequelize.INTEGER },
-    
     lote: { type: Sequelize.STRING },
-    fecha_caducidad: { type: Sequelize.DATEONLY },
     estado: { 
       type: Sequelize.STRING, 
       defaultValue: 'DISPONIBLE' 
