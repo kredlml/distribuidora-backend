@@ -13,3 +13,14 @@ module.exports = app => {
 
   app.use('/api/inventario', router);
 };
+
+module.exports = app => {
+  const pagos = require("../controllers/pago.controller.js");
+  const { verificarToken, isCajero } = require("../middlewares/authJwt.js");
+  var router = require("express").Router();
+
+  router.post("/", [verificarToken, isCajero], pagos.create);
+  router.get("/", verificarToken, pagos.findAll);
+
+  app.use('/api/pagos', router);
+};
