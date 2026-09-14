@@ -39,7 +39,7 @@ exports.create = async (req, res) => {
         estado: 'DISPONIBLE',
         cantidad: { [db.Sequelize.Op.gt]: 0 }
       },
-      order: [['fecha_caducidad', 'ASC']],
+      order: [['id_inventario', 'ASC']],
       transaction: t
     });
 
