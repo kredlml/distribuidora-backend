@@ -6,6 +6,10 @@ module.exports = (sequelize, Sequelize) => {
     talla: { type: Sequelize.STRING(10) },
     color: { type: Sequelize.STRING(40) },
     precio_unitario: { type: Sequelize.DECIMAL(10, 2), allowNull: false },
+    // Umbral usado por el reporte de stock critico (GET /api/reportes/stock-critico):
+    // se alerta cuando la suma de Inventario DISPONIBLE de este producto en una sucursal
+    // cae a este valor o menos.
+    stock_minimo: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 5 },
     activo: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
     id_categoria: { type: Sequelize.INTEGER },
     // Agrupa variantes (talla/color) de una misma prenda. Si es NULL, el producto

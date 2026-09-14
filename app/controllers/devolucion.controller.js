@@ -64,11 +64,11 @@ async function reingresarAInventario({ id_producto, id_sucursal, cantidad, estad
 }
 
 // Descuenta cantidad de las unidades DISPONIBLES de un producto en una sucursal,
-// usando el mismo criterio FIFO (por fecha de caducidad) que el motor de ventas existente.
+// usando el mismo criterio FIFO (por orden de ingreso) que el motor de ventas existente.
 async function descontarDisponible({ id_producto, id_sucursal, cantidad }, t) {
   const lotes = await Inventario.findAll({
     where: { id_producto, id_sucursal, estado: 'DISPONIBLE', cantidad: { [Op.gt]: 0 } },
-    order: [['fecha_caducidad', 'ASC']],
+    order: [['id_inventario', 'ASC']],
     transaction: t,
     lock: t.LOCK.UPDATE
   });

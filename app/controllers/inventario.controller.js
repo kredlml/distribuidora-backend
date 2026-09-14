@@ -11,9 +11,8 @@ exports.create = (req, res) => {
     cantidad: req.body.cantidad,
     id_producto: req.body.id_producto,
     id_sucursal: req.body.id_sucursal,
-    lote: req.body.lote,                     
-    fecha_caducidad: req.body.fecha_caducidad, 
-    estado: req.body.estado || 'DISPONIBLE'  
+    lote: req.body.lote,
+    estado: req.body.estado || 'DISPONIBLE'
   };
 
   Inventario.create(nuevoInventario)

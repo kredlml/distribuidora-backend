@@ -1,0 +1,1506 @@
+{
+  "info": {
+    "_postman_id": "d1b1a2f0-0000-4000-8000-000000000001",
+    "name": "Distribuidora Backend — API completa",
+    "description": "Colección importable en Postman con todos los endpoints reales del backend distribuidora-backend (Express + Sequelize + PostgreSQL), agrupados por módulo.\n\nRequiere el backend corriendo (`npm start`, puerto definido en .env.development, por defecto 8080). Ejecutar primero '0. Autenticación > Registro' y 'Login' - el token JWT se guarda automáticamente en la variable de colección `token` y las requests protegidas lo usan vía el header Authorization.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "id": "distribuidora-3",
+      "name": "0. Autenticación",
+      "description": "Ejecutar Registro y Login antes que cualquier request marcada como protegida (usa el header Authorization: Bearer {{token}}).",
+      "item": [
+        {
+          "id": "distribuidora-1",
+          "name": "Registro de empleado",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"empleado_email\", `juan.perez.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Empleado registrado\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Perez\",\n  \"puesto\": \"ADMIN\",\n  \"email\": \"{{empleado_email}}\",\n  \"password\": \"Password123\",\n  \"id_sucursal\": \"{{id_sucursal}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/registro",
+            "description": "Crea un empleado. El puesto determina los permisos (ADMIN, CAJERO, BODEGUERO). El email se genera dinamicamente (empleado_email) para poder correr la coleccion varias veces sin chocar con el email de una corrida anterior (email es unico a nivel de base de datos aunque el modelo Empleado no lo declare explicitamente)."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-2",
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Login exitoso\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.token) pm.collectionVariables.set(\"token\", body.token);",
+                  "if (body.id_sucursal) pm.collectionVariables.set(\"id_sucursal\", body.id_sucursal);",
+                  "if (body.id) pm.collectionVariables.set(\"id_empleado\", body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{empleado_email}}\",\n  \"password\": \"Password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Guarda el JWT en la variable de coleccion `token`, usado por el resto de requests protegidas. Depende de haber corrido 'Registro de empleado' antes en la misma ejecucion (usa el email generado ahi)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-7",
+      "name": "1. Sucursales",
+      "item": [
+        {
+          "id": "distribuidora-4",
+          "name": "Crear sucursal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Sucursal creada\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_sucursal;",
+                  "if (value) pm.collectionVariables.set(\"id_sucursal\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Sucursal Centro\",\n  \"direccion\": \"5ta avenida 10-20\",\n  \"ciudad\": \"Guatemala\",\n  \"telefono\": \"22334455\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/sucursales"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-5",
+          "name": "Listar sucursales",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sucursales"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-6",
+          "name": "Actualizar sucursal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"22339999\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/sucursales/{{id_sucursal}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-10",
+      "name": "2. Clientes",
+      "item": [
+        {
+          "id": "distribuidora-8",
+          "name": "Crear cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Cliente creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_cliente;",
+                  "if (value) pm.collectionVariables.set(\"id_cliente\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Maria\",\n  \"apellido\": \"Lopez\",\n  \"telefono\": \"55667788\",\n  \"email\": \"maria.lopez.{{$timestamp}}@example.com\",\n  \"direccion\": \"Zona 10, Guatemala\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/clientes",
+            "description": "email con {{$timestamp}} porque Cliente.email es unique en el modelo (app/models/cliente.model.js) - un valor fijo solo funciona la primera vez que se corre la coleccion."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-9",
+          "name": "Listar clientes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/clientes"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-13",
+      "name": "3. Proveedores",
+      "item": [
+        {
+          "id": "distribuidora-11",
+          "name": "Crear proveedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Proveedor creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_proveedor;",
+                  "if (value) pm.collectionVariables.set(\"id_proveedor\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre_empresa\": \"Textiles S.A.\",\n  \"nombre_contacto\": \"Carlos Ramirez\",\n  \"telefono\": \"22221111\",\n  \"email\": \"contacto@textiles.com\",\n  \"direccion\": \"Zona 4, Guatemala\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/proveedores"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-12",
+          "name": "Listar proveedores",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/proveedores"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-16",
+      "name": "4. Categorías",
+      "item": [
+        {
+          "id": "distribuidora-14",
+          "name": "Crear categoria",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Categoria creada\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_categoria;",
+                  "if (value) pm.collectionVariables.set(\"id_categoria\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Camisas-{{$timestamp}}\",\n  \"descripcion\": \"Camisas de vestir y casuales\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/categorias",
+            "description": "nombre con {{$timestamp}} porque Categoria.nombre es unique en el modelo (app/models/categoria.model.js) - un valor fijo solo funciona la primera vez que se corre la coleccion."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-15",
+          "name": "Listar categorias",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/categorias"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-19",
+      "name": "5. Empleados",
+      "item": [
+        {
+          "id": "distribuidora-17",
+          "name": "Crear empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Empleado creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_empleado;",
+                  "if (value) pm.collectionVariables.set(\"id_empleado\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gomez\",\n  \"puesto\": \"CAJERO\",\n  \"telefono\": \"41234567\",\n  \"email\": \"ana.gomez.{{$timestamp}}@example.com\",\n  \"fecha_contratacion\": \"2026-01-15\",\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/empleados",
+            "description": "email con {{$timestamp}} porque la columna email de Empleado es unica en la base de datos (aunque el modelo Sequelize no lo declare) - un valor fijo solo funciona la primera vez que se corre la coleccion."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-18",
+          "name": "Listar empleados",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/empleados"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-23",
+      "name": "6. Productos",
+      "item": [
+        {
+          "id": "distribuidora-20",
+          "name": "Crear producto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Producto creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_producto;",
+                  "if (value) pm.collectionVariables.set(\"id_producto\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Camisa Manga Larga\",\n  \"descripcion\": \"Camisa de algodon\",\n  \"talla\": \"M\",\n  \"color\": \"Azul\",\n  \"precio_unitario\": 150,\n  \"id_categoria\": \"{{id_categoria}}\",\n  \"stock_minimo\": 5,\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/productos"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-21",
+          "name": "Listar productos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/productos"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-22",
+          "name": "Historial de producto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/productos/{{id_producto}}/historial",
+            "description": "Requiere estar autenticado (cualquier empleado)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-27",
+      "name": "7. Inventario",
+      "item": [
+        {
+          "id": "distribuidora-24",
+          "name": "Crear registro de inventario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Inventario registrado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_inventario;",
+                  "if (value) pm.collectionVariables.set(\"id_inventario\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_producto\": \"{{id_producto}}\",\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"cantidad\": 50,\n  \"lote\": \"L-2026-001\",\n  \"estado\": \"DISPONIBLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/inventario",
+            "description": "Requiere rol BODEGUERO o ADMIN."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-25",
+          "name": "Listar inventario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/inventario"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-26",
+          "name": "Stock global",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/inventario/stock"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-33",
+      "name": "8. Pedidos",
+      "item": [
+        {
+          "id": "distribuidora-28",
+          "name": "Crear pedido / venta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Venta procesada\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.pedido && body.pedido.id_pedido;",
+                  "if (value) pm.collectionVariables.set(\"id_pedido\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_cliente\": \"{{id_cliente}}\",\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"id_producto\": \"{{id_producto}}\",\n  \"cantidad\": 2,\n  \"precio_unitario\": 150,\n  \"total\": 300,\n  \"id_empleado\": \"{{id_empleado}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/pedidos",
+            "description": "Requiere rol CAJERO o ADMIN. Descuenta stock de Inventario usando FIFO por orden de ingreso (id_inventario ASC)."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-29",
+          "name": "Listar pedidos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-30",
+          "name": "Obtener pedido por id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/{{id_pedido}}"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-31",
+          "name": "Actualizar estado de pedido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"ENTREGADO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/pedidos/{{id_pedido}}/estado",
+            "description": "Marca el pedido como ENTREGADO - precondición para poder solicitar devoluciones/cambios sobre él (ver folder 12). Estados válidos: PENDIENTE, PROCESADO, ENVIADO, ENTREGADO, CANCELADO."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-32",
+          "name": "Historial de pedido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/{{id_pedido}}/historial"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-36",
+      "name": "9. Detalle Pedido",
+      "item": [
+        {
+          "id": "distribuidora-34",
+          "name": "Crear detalle de pedido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Detalle creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_detalle_pedido;",
+                  "if (value) pm.collectionVariables.set(\"id_detalle_pedido\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_pedido\": \"{{id_pedido}}\",\n  \"id_producto\": \"{{id_producto}}\",\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"cantidad\": 2,\n  \"precio_unitario\": 150\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/detalles",
+            "description": "Descuenta directamente de Inventario (no usa FIFO ni crea movimiento de inventario, a diferencia de POST /api/pedidos). cantidad=2 a propósito: el folder 12 (Devoluciones) pide 1 unidad de este detalle para una devolución y otra unidad para un cambio de talla, sobre el mismo detalle."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-35",
+          "name": "Listar detalles de pedido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/detalles"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-39",
+      "name": "10. Pagos",
+      "item": [
+        {
+          "id": "distribuidora-37",
+          "name": "Registrar pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Pago registrado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.pago && body.pago.id_pago;",
+                  "if (value) pm.collectionVariables.set(\"id_pago\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metodo_pago\": \"PAYPAL\",\n  \"monto\": 300,\n  \"id_pedido\": \"{{id_pedido}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/pagos",
+            "description": "Requiere rol CAJERO o ADMIN. metodo_pago debe ser 'STRIPE' o 'PAYPAL' (unicos valores del ENUM en app/models/pago.model.js - cualquier otro valor, como 'EFECTIVO', falla con 400). Se usa PAYPAL por defecto para no depender de la API real de Stripe; cambiar a 'STRIPE' intenta crear un PaymentIntent real con STRIPE_SECRET_KEY."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-38",
+          "name": "Listar pagos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pagos"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-42",
+      "name": "11. Reportes",
+      "item": [
+        {
+          "id": "distribuidora-40",
+          "name": "Historial de ventas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/ventas"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-41",
+          "name": "Stock critico",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/stock-critico",
+            "description": "Suma el stock DISPONIBLE por producto/sucursal y lo compara contra Producto.stock_minimo. Con los datos de esta coleccion normalmente da un arreglo vacio (el stock creado supera el minimo); para verlo con resultados, crea un producto con stock_minimo alto o registra poco inventario."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-53",
+      "name": "12. Devoluciones",
+      "item": [
+        {
+          "id": "distribuidora-43",
+          "name": "Crear solicitud de devolucion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Devolucion solicitada\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.devolucion && body.devolucion.id_devolucion;",
+                  "if (value) pm.collectionVariables.set(\"id_devolucion\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_pedido\": \"{{id_pedido}}\",\n  \"id_cliente\": \"{{id_cliente}}\",\n  \"tipo\": \"DEVOLUCION\",\n  \"motivo\": \"DEFECTUOSO\",\n  \"observacion\": \"El cliente indica una costura suelta\",\n  \"detalles\": [\n    {\n      \"id_detalle_pedido\": \"{{id_detalle_pedido}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/devoluciones",
+            "description": "El pedido debe existir, pertenecer a id_cliente y estar en estado ENTREGADO. motivo es un ENUM (DEFECTUOSO, TALLA_INCORRECTA, PRODUCTO_INCORRECTO, DANADO_ENVIO, OTRO) - ver app/models/devolucion.model.js."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-44",
+          "name": "Crear solicitud de cambio de talla/variante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_pedido\": \"{{id_pedido}}\",\n  \"id_cliente\": \"{{id_cliente}}\",\n  \"tipo\": \"CAMBIO_TALLA\",\n  \"motivo\": \"TALLA_INCORRECTA\",\n  \"observacion\": \"Cliente solicita talla mas grande\",\n  \"detalles\": [\n    {\n      \"id_detalle_pedido\": \"{{id_detalle_pedido}}\",\n      \"cantidad\": 1,\n      \"id_producto_nuevo\": \"{{id_producto_nuevo}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/devoluciones"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-45",
+          "name": "Listar devoluciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/devoluciones"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-46",
+          "name": "Obtener devolucion por id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.DetalleDevolucions && body.DetalleDevolucions.length) {",
+                  "  pm.collectionVariables.set(\"id_detalle_devolucion\", body.DetalleDevolucions[0].id_detalle_devolucion);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/devoluciones/{{id_devolucion}}",
+            "description": "Tambien captura id_detalle_devolucion (necesario, sin comillas, para 'Revisar devolucion')."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-47",
+          "name": "Aprobar devolucion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/devoluciones/{{id_devolucion}}/aprobar"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-48",
+          "name": "Rechazar devolucion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 esperado: esta misma devolucion ya fue APROBADA por la request anterior, y la maquina de estados solo permite APROBADA -> RECIBIDA (rechazar solo es valido desde SOLICITADA)\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/devoluciones/{{id_devolucion}}/rechazar",
+            "description": "Se espera 400 aqui: es la rama alterna a 'Aprobar', no un paso posterior. Ver app/utils/estadosDevolucion.js."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-49",
+          "name": "Recibir devolucion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/devoluciones/{{id_devolucion}}/recibir",
+            "description": "La prenda fisica llega de vuelta a la sucursal. Requiere que la devolucion este APROBADA."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-50",
+          "name": "Revisar devolucion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"aceptar\": true,\n  \"detalles\": [\n    {\n      \"id_detalle_devolucion\": {{id_detalle_devolucion}},\n      \"resultado_revision\": \"BUEN_ESTADO\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/devoluciones/{{id_devolucion}}/revisar",
+            "description": "resultado_revision debe ser uno de: BUEN_ESTADO, DANADO, DEFECTUOSO. Requiere que la devolucion este RECIBIDA."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-51",
+          "name": "Reintegrar devolucion a inventario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/devoluciones/{{id_devolucion}}/reintegrar",
+            "description": "Solo para tipo=DEVOLUCION en estado ACEPTADA."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-52",
+          "name": "Procesar cambio de talla/variante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 esperado: {{id_devolucion}} es la devolucion tipo=DEVOLUCION creada al inicio del folder (ya REINTEGRADA por el paso anterior); esta accion es solo para CAMBIO_TALLA/CAMBIO_VARIANTE\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/devoluciones/{{id_devolucion}}/cambiar",
+            "description": "Se espera 400 aqui con el flujo de esta coleccion: solo aplica a tipo=CAMBIO_TALLA/CAMBIO_VARIANTE en estado ACEPTADA, y {{id_devolucion}} ya quedo REINTEGRADA (y es tipo=DEVOLUCION) por los pasos anteriores del folder."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-56",
+      "name": "13. Auditoría",
+      "item": [
+        {
+          "id": "distribuidora-54",
+          "name": "Registrar auditoria manual",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"ACCION_MANUAL\",\n  \"tabla_afectada\": \"Producto\",\n  \"registro_afectado_id\": \"{{id_producto}}\",\n  \"detalles\": \"Registro de auditoria manual desde Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auditoria"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-55",
+          "name": "Listar auditoria",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auditoria?tabla_afectada=Producto&registro_afectado_id={{id_producto}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "distribuidora-58",
+      "name": "14. Webhook (Stripe)",
+      "description": "Endpoint de uso interno de Stripe. Se deja documentado por completitud, no para ejecutarse tal cual desde Postman.",
+      "item": [
+        {
+          "id": "distribuidora-57",
+          "name": "Stripe webhook (referencia, no ejecutar desde Postman)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Firma invalida rechazada\", () => pm.expect(pm.response.code).to.equal(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "stripe-signature",
+                "value": "t=0,v1=firma_invalida_de_ejemplo"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_ejemplo\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_ejemplo\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/webhook",
+            "description": "Este endpoint valida la firma real de Stripe contra STRIPE_WEBHOOK_SECRET usando el body crudo. Llamado desde Postman con una firma inventada siempre respondera 400. Para probarlo de verdad usa el Stripe CLI: `stripe listen --forward-to localhost:8080/api/webhook` y `stripe trigger payment_intent.succeeded`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "empleado_email",
+      "value": ""
+    },
+    {
+      "key": "id_sucursal",
+      "value": "1"
+    },
+    {
+      "key": "id_cliente",
+      "value": "1"
+    },
+    {
+      "key": "id_proveedor",
+      "value": "1"
+    },
+    {
+      "key": "id_categoria",
+      "value": "1"
+    },
+    {
+      "key": "id_empleado",
+      "value": "1"
+    },
+    {
+      "key": "id_producto",
+      "value": "1"
+    },
+    {
+      "key": "id_producto_nuevo",
+      "value": "2"
+    },
+    {
+      "key": "id_inventario",
+      "value": "1"
+    },
+    {
+      "key": "id_pedido",
+      "value": "1"
+    },
+    {
+      "key": "id_detalle_pedido",
+      "value": "1"
+    },
+    {
+      "key": "id_pago",
+      "value": "1"
+    },
+    {
+      "key": "id_devolucion",
+      "value": "1"
+    },
+    {
+      "key": "id_detalle_devolucion",
+      "value": "1"
+    }
+  ]
+}

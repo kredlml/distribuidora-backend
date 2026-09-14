@@ -15,6 +15,7 @@ exports.create = async (req, res) => {
       color: req.body.color,
       precio_unitario: req.body.precio_unitario,
       id_categoria: req.body.id_categoria,
+      stock_minimo: req.body.stock_minimo,
       activo: req.body.activo !== undefined ? req.body.activo : true
     };
 

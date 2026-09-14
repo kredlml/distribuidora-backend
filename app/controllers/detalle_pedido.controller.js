@@ -36,7 +36,8 @@ exports.create = async (req, res) => {
       id_pedido: id_pedido,
       id_producto: id_producto,
       cantidad: cantidad,
-      precio_unitario: precio_unitario
+      precio_unitario: precio_unitario,
+      subtotal: cantidad * precio_unitario
     }, { transaction: t });
 
     

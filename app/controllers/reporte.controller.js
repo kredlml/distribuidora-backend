@@ -32,17 +32,19 @@ exports.historialVentas = async (req, res) => {
 exports.stockCritico = async (req, res) => {
   try {
     const query = `
-      SELECT 
+      SELECT
         prod.nombre AS producto,
         prod.talla,
         prod.color,
         s.nombre AS sucursal,
-        inv.cantidad_actual,
-        inv.stock_minimo
+        SUM(inv.cantidad) AS stock_actual,
+        prod.stock_minimo
       FROM "Inventario" inv
       INNER JOIN "Producto" prod ON inv.id_producto = prod.id_producto
       INNER JOIN "Sucursal" s ON inv.id_sucursal = s.id_sucursal
-      WHERE inv.cantidad_actual <= inv.stock_minimo;
+      WHERE inv.estado = 'DISPONIBLE'
+      GROUP BY prod.id_producto, prod.nombre, prod.talla, prod.color, s.id_sucursal, s.nombre, prod.stock_minimo
+      HAVING SUM(inv.cantidad) <= prod.stock_minimo;
     `;
 
     const [resultados] = await sequelize.query(query);
