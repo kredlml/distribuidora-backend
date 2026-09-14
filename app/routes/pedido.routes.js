@@ -5,8 +5,9 @@ module.exports = app => {
 
 
   router.post("/", [verificarToken, isCajero], pedidos.create);
-  
-  
+//Defininir, para diferenciar. 
+  router.post("/", pedidos.create);
+  router.put("/:id/estado", pedidos.updateEstado);  
   router.get("/", verificarToken, pedidos.findAll);
   router.get("/:id", verificarToken, pedidos.findOne);
   
