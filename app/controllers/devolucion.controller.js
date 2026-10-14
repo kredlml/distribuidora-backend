@@ -165,7 +165,7 @@ exports.create = async (req, res) => {
         id_producto: detallePedido.id_producto,
         id_pedido,
         id_devolucion: nuevaDevolucion.id_devolucion,
-        id_empleado: null, // solicitud iniciada por el cliente, no por un empleado autenticado
+        id_empleado: req.empleadoId || null, // empleado que registra la solicitud en mostrador
         tipo_movimiento: 'DEVOLUCION_SOLICITADA',
         cantidad: det.cantidad,
         estado_anterior: null,
@@ -184,9 +184,31 @@ exports.create = async (req, res) => {
   }
 };
 
+// GET /api/devoluciones?estado=&tipo=&motivo=&id_pedido=&id_cliente=&desde=&hasta=
+// desde/hasta (YYYY-MM-DD) filtran por fecha_solicitud, ambos extremos incluidos.
 exports.findAll = async (req, res) => {
   try {
-    const data = await Devolucion.findAll({ order: [['id_devolucion', 'DESC']] });
+    const { estado, tipo, motivo, id_pedido, id_cliente, desde, hasta } = req.query;
+    const where = {};
+    if (estado) where.estado = estado;
+    if (tipo) where.tipo = tipo;
+    if (motivo) where.motivo = motivo;
+    if (id_pedido) where.id_pedido = id_pedido;
+    if (id_cliente) where.id_cliente = id_cliente;
+    if (desde || hasta) {
+      where.fecha_solicitud = {};
+      if (desde) where.fecha_solicitud[Op.gte] = new Date(`${desde}T00:00:00`);
+      if (hasta) where.fecha_solicitud[Op.lte] = new Date(`${hasta}T23:59:59.999`);
+    }
+
+    const data = await Devolucion.findAll({
+      where,
+      include: [
+        { model: db.cliente, attributes: ['id_cliente', 'nombre', 'apellido'] },
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+      ],
+      order: [['id_devolucion', 'DESC']]
+    });
     res.send(data);
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al recuperar las devoluciones." });
@@ -198,6 +220,8 @@ exports.findOne = async (req, res) => {
     const devolucion = await Devolucion.findByPk(req.params.id, {
       include: [
         { model: Pedido, attributes: ['id_pedido', 'estado', 'id_sucursal', 'id_cliente'] },
+        { model: db.cliente, attributes: ['id_cliente', 'nombre', 'apellido', 'email', 'telefono'] },
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] },
         {
           model: DetalleDevolucion,
           include: [
@@ -217,6 +241,17 @@ exports.findOne = async (req, res) => {
   }
 };
 
+// Observación opcional (máx. 255 caracteres) enviada por el empleado en el body de
+// una acción de gestión (aprobar, rechazar, recibir, revisar). Queda en la auditoría
+// y en el movimiento de inventario; no sobrescribe Devolucion.observacion (motivo original).
+function obtenerObservacion(req) {
+  const obs = req.body && typeof req.body.observacion === 'string' ? req.body.observacion.trim() : '';
+  if (obs.length > 255) {
+    throw new Error("La observación no puede superar los 255 caracteres.");
+  }
+  return obs || null;
+}
+
 // Helper genérico de transición simple de estado (sin efectos sobre inventario).
 async function transicionSimple(req, res, estadoNuevo) {
   const t = await db.sequelize.transaction();
@@ -232,6 +267,7 @@ async function transicionSimple(req, res, estadoNuevo) {
       throw new Error(`Transición inválida: no se puede pasar de ${devolucion.estado} a ${estadoNuevo}.`);
     }
 
+    const observacionGestion = obtenerObservacion(req);
     const estadoAnterior = devolucion.estado;
     devolucion.estado = estadoNuevo;
     devolucion.fecha_actualizacion = new Date();
@@ -243,7 +279,7 @@ async function transicionSimple(req, res, estadoNuevo) {
       accion: `DEVOLUCION_${estadoNuevo}`,
       tabla_afectada: 'Devolucion',
       registro_afectado_id: devolucion.id_devolucion,
-      detalles: `Devolución #${devolucion.id_devolucion} cambiada de ${estadoAnterior} a ${estadoNuevo}.`
+      detalles: `Devolución #${devolucion.id_devolucion} cambiada de ${estadoAnterior} a ${estadoNuevo}.${observacionGestion ? ' Observación: ' + observacionGestion : ''}`
     }, t);
 
     await t.commit();
@@ -273,6 +309,7 @@ exports.recibir = async (req, res) => {
       throw new Error(`Transición inválida: no se puede pasar de ${devolucion.estado} a ${ESTADOS.RECIBIDA}.`);
     }
 
+    const observacionGestion = obtenerObservacion(req);
     for (const detalle of devolucion.DetalleDevolucions) {
       await registrarMovimiento({
         id_producto: detalle.id_producto,
@@ -283,7 +320,9 @@ exports.recibir = async (req, res) => {
         cantidad: detalle.cantidad,
         estado_anterior: devolucion.estado,
         estado_nuevo: ESTADOS.RECIBIDA,
-        observacion: "Prenda recibida físicamente en sucursal."
+        observacion: observacionGestion
+          ? `Prenda recibida físicamente en sucursal. ${observacionGestion}`.slice(0, 255)
+          : "Prenda recibida físicamente en sucursal."
       }, t);
     }
 
@@ -297,7 +336,7 @@ exports.recibir = async (req, res) => {
       accion: 'DEVOLUCION_RECIBIDA',
       tabla_afectada: 'Devolucion',
       registro_afectado_id: devolucion.id_devolucion,
-      detalles: `Devolución #${devolucion.id_devolucion} recibida físicamente en sucursal.`
+      detalles: `Devolución #${devolucion.id_devolucion} recibida físicamente en sucursal.${observacionGestion ? ' Observación: ' + observacionGestion : ''}`
     }, t);
 
     await t.commit();
@@ -327,6 +366,19 @@ exports.revisar = async (req, res) => {
     if (!validarTransicion(devolucion.estado, ESTADOS.EN_REVISION)) {
       throw new Error(`Transición inválida: no se puede pasar de ${devolucion.estado} a ${ESTADOS.EN_REVISION}.`);
     }
+
+    // M4: la revisión debe cubrir TODAS las prendas de la devolución, sin repetidas.
+    const idsEnviados = detalles.map(d => d.id_detalle_devolucion);
+    if (new Set(idsEnviados).size !== idsEnviados.length) {
+      throw new Error("La revisión contiene detalles repetidos.");
+    }
+    const faltantes = devolucion.DetalleDevolucions
+      .filter(d => !idsEnviados.includes(d.id_detalle_devolucion))
+      .map(d => d.id_detalle_devolucion);
+    if (faltantes.length > 0) {
+      throw new Error(`La revisión debe incluir todos los detalles de la devolución. Faltan: ${faltantes.join(', ')}.`);
+    }
+    const observacionGestion = obtenerObservacion(req);
 
     const estadoFinal = aceptar ? ESTADOS.ACEPTADA : ESTADOS.RECHAZADA_EN_REVISION;
     if (!validarTransicion(ESTADOS.EN_REVISION, estadoFinal)) {
@@ -360,7 +412,7 @@ exports.revisar = async (req, res) => {
         cantidad: detalle.cantidad,
         estado_anterior: ESTADOS.RECIBIDA,
         estado_nuevo: estadoFinal,
-        observacion: `Resultado de revisión: ${detEntrada.resultado_revision}.`
+        observacion: `Resultado de revisión: ${detEntrada.resultado_revision}.${observacionGestion ? ' ' + observacionGestion : ''}`.slice(0, 255)
       }, t);
     }
 
@@ -374,7 +426,7 @@ exports.revisar = async (req, res) => {
       accion: `DEVOLUCION_${estadoFinal}`,
       tabla_afectada: 'Devolucion',
       registro_afectado_id: devolucion.id_devolucion,
-      detalles: `Devolución #${devolucion.id_devolucion} revisada. Resultado: ${estadoFinal}.`
+      detalles: `Devolución #${devolucion.id_devolucion} revisada. Resultado: ${estadoFinal}.${observacionGestion ? ' Observación: ' + observacionGestion : ''}`
     }, t);
 
     await t.commit();

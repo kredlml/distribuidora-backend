@@ -15,7 +15,9 @@ exports.create = async (req, res) => {
     const inventario = await Inventario.findOne({
       where: { 
         id_producto: id_producto,
-        id_sucursal: id_sucursal 
+        id_sucursal: id_sucursal,
+        // Solo stock vendible: las filas DANADA/DEFECTUOSA (reintegros de devoluciones) no se venden.
+        estado: 'DISPONIBLE'
       },
       transaction: t
     });

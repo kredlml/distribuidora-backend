@@ -7,8 +7,10 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const app = express();
 
+// Orígenes permitidos para el frontend. Se pueden definir varios separados por coma en
+// la variable de entorno CORS_ORIGIN; si no existe se conserva el valor original.
 var corsOptions = {
-  origin: "http://localhost:8081"
+  origin: (process.env.CORS_ORIGIN || "http://localhost:8081").split(",").map(o => o.trim())
 };
 app.use(cors(corsOptions));
 

@@ -115,36 +115,6 @@ exports.findAll = async (req, res) => {
   }
 };
 
-// Actualizar el estado de un Pedido (máquina de estados)
-exports.updateEstado = async (req, res) => {
-  try {
-    const id = req.params.id;
-    const nuevoEstado = req.body.estado;
-
-    if (!nuevoEstado) {
-      return res.status(400).send({ message: "El estado es obligatorio." });
-    }
-
-    const pedido = await Pedido.findByPk(id);
-    if (!pedido) {
-      return res.status(404).send({ message: `No se encontró el pedido con id=${id}.` });
-    }
-
-    // No se puede marcar como ENTREGADO un pedido que sigue PENDIENTE de pago
-    if (nuevoEstado === 'ENTREGADO' && pedido.estado === 'PENDIENTE') {
-      return res.status(400).send({
-        message: "No se puede marcar como ENTREGADO un pedido que sigue PENDIENTE de pago."
-      });
-    }
-
-    pedido.estado = nuevoEstado;
-    await pedido.save();
-    res.send(pedido);
-  } catch (error) {
-    res.status(500).send({ message: error.message || "Error al actualizar el estado del pedido." });
-  }
-};
-
 exports.findOne = async (req, res) => {
   try {
     const id = req.params.id;
@@ -211,6 +181,14 @@ exports.actualizarEstado = async (req, res) => {
       throw err;
     }
 
+    // No se puede marcar como ENTREGADO un pedido que sigue PENDIENTE de pago:
+    // ENTREGADO es la precondición para solicitar devoluciones/cambios.
+    if (estado === 'ENTREGADO' && pedido.estado === 'PENDIENTE') {
+      const err = new Error("No se puede marcar como ENTREGADO un pedido que sigue PENDIENTE de pago.");
+      err.status = 400;
+      throw err;
+    }
+
     const estadoAnterior = pedido.estado;
     pedido.estado = estado;
     await pedido.save({ transaction: t });
@@ -257,6 +235,10 @@ exports.historial = async (req, res) => {
           { id_devolucion: { [db.Sequelize.Op.in]: idsDevoluciones } }
         ]
       },
+      include: [
+        { model: Producto, attributes: ['nombre', 'talla', 'color'] },
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+      ],
       order: [['id_movimiento', 'ASC']]
     });
 

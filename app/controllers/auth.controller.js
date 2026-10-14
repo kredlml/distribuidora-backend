@@ -53,6 +53,9 @@ exports.login = async (req, res) => {
     res.status(200).send({
       id: empleado.id_empleado,
       email: empleado.email,
+      nombre: empleado.nombre,
+      apellido: empleado.apellido,
+      puesto: empleado.puesto,
       id_sucursal: empleado.id_sucursal, 
       token: token
     });

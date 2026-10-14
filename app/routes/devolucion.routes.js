@@ -1,20 +1,23 @@
 module.exports = app => {
   const devoluciones = require("../controllers/devolucion.controller.js");
-  const authJwt = require("../middlewares/authJwt.js");
+  const { verificarToken, isAdmin, isCajero, isBodeguero } = require("../middlewares/authJwt.js");
   var router = require("express").Router();
 
-  // El cliente (o el vendedor que atiende el mostrador) registra la solicitud.
-  router.post("/", devoluciones.create);
-  router.get("/", devoluciones.findAll);
-  router.get("/:id", devoluciones.findOne);
+  // Consulta y registro: requieren empleado autenticado. El registro lo hace el
+  // cajero (o ADMIN) que atiende el mostrador a nombre del cliente.
+  router.post("/", [verificarToken, isCajero], devoluciones.create);
+  router.get("/", verificarToken, devoluciones.findAll);
+  router.get("/:id", verificarToken, devoluciones.findOne);
 
-  // Operaciones administrativas: requieren empleado autenticado, igual que /api/reportes.
-  router.put("/:id/aprobar", authJwt.verificarToken, devoluciones.aprobar);
-  router.put("/:id/rechazar", authJwt.verificarToken, devoluciones.rechazar);
-  router.put("/:id/recibir", authJwt.verificarToken, devoluciones.recibir);
-  router.put("/:id/revisar", authJwt.verificarToken, devoluciones.revisar);
-  router.put("/:id/reintegrar", authJwt.verificarToken, devoluciones.reintegrar);
-  router.put("/:id/cambiar", authJwt.verificarToken, devoluciones.cambiar);
+  // Decisión sobre la solicitud: ADMIN.
+  router.put("/:id/aprobar", [verificarToken, isAdmin], devoluciones.aprobar);
+  router.put("/:id/rechazar", [verificarToken, isAdmin], devoluciones.rechazar);
+
+  // Operación física y de inventario: BODEGUERO (ADMIN también pasa).
+  router.put("/:id/recibir", [verificarToken, isBodeguero], devoluciones.recibir);
+  router.put("/:id/revisar", [verificarToken, isBodeguero], devoluciones.revisar);
+  router.put("/:id/reintegrar", [verificarToken, isBodeguero], devoluciones.reintegrar);
+  router.put("/:id/cambiar", [verificarToken, isBodeguero], devoluciones.cambiar);
 
   app.use('/api/devoluciones', router);
 };

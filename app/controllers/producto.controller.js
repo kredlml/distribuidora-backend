@@ -48,6 +48,9 @@ exports.historial = async (req, res) => {
 
     const movimientos = await db.movimiento_inventario.findAll({
       where: { id_producto: id },
+      include: [
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+      ],
       order: [['id_movimiento', 'ASC']]
     });
 
