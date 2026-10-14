@@ -39,6 +39,13 @@ async function cantidadYaSolicitada(id_detalle_pedido, t) {
   return previas.reduce((acc, d) => acc + d.cantidad, 0);
 }
 
+// Las variantes de una prenda se agrupan por id_producto_padre (estructura de 2 niveles:
+// el producto base tiene id_producto_padre NULL y sus variantes apuntan a él).
+// La "raíz" del grupo es el padre o, si el producto no tiene padre, él mismo.
+function raizDeGrupo(producto) {
+  return Number(producto.id_producto_padre || producto.id_producto);
+}
+
 // Busca o crea la fila de Inventario (lote) para un producto+sucursal+estado dados
 // y le suma la cantidad indicada. Reutiliza el esquema existente de Inventario
 // (campo "estado") en vez de crear una tabla nueva para unidades dañadas/defectuosas.
@@ -150,6 +157,18 @@ exports.create = async (req, res) => {
         if (!productoNuevo) {
           throw new Error(`El producto nuevo ${det.id_producto_nuevo} no existe.`);
         }
+        if (!productoNuevo.activo) {
+          throw new Error(`El producto nuevo ${det.id_producto_nuevo} está inactivo y no puede usarse en un cambio.`);
+        }
+        if (Number(productoNuevo.id_producto) === Number(detallePedido.id_producto)) {
+          throw new Error("El producto nuevo debe ser distinto del producto que se devuelve.");
+        }
+        const productoOriginal = await Producto.findByPk(detallePedido.id_producto, { transaction: t });
+        if (raizDeGrupo(productoOriginal) !== raizDeGrupo(productoNuevo)) {
+          throw new Error(
+            `El producto nuevo ${det.id_producto_nuevo} no es una variante del producto original ${detallePedido.id_producto} (deben pertenecer al mismo grupo de variantes).`
+          );
+        }
       }
 
       const detalleDevolucion = await DetalleDevolucion.create({
@@ -238,6 +257,102 @@ exports.findOne = async (req, res) => {
     res.send(devolucion);
   } catch (error) {
     res.status(500).send({ message: "Error al recuperar la devolución: " + error.message });
+  }
+};
+
+// GET /api/devoluciones/pedido/:id_pedido/devolvible
+// Para cada línea del pedido informa cuánto se compró, cuánto ya está comprometido en
+// devoluciones/cambios vigentes (las rechazadas no cuentan, igual que en la validación de
+// create) y cuánto se puede aún solicitar. Si el pedido no está ENTREGADO no se puede
+// solicitar nada: permite_devolucion=false y cantidad_devolvible=0 en todas las líneas.
+exports.devolvible = async (req, res) => {
+  try {
+    const pedido = await Pedido.findByPk(req.params.id_pedido, {
+      attributes: ['id_pedido', 'id_cliente', 'id_sucursal', 'estado'],
+      include: [{
+        model: DetallePedido,
+        include: [{ model: Producto, attributes: ['nombre', 'talla', 'color'] }]
+      }]
+    });
+    if (!pedido) {
+      return res.status(404).send({ message: `No se encontró el Pedido con id=${req.params.id_pedido}.` });
+    }
+
+    const lineas = pedido.DetallePedidos || [];
+    const ids = lineas.map(l => l.id_detalle_pedido);
+
+    // Una sola consulta con todas las solicitudes vigentes de estas líneas.
+    const previas = ids.length === 0 ? [] : await DetalleDevolucion.findAll({
+      where: { id_detalle_pedido: { [Op.in]: ids } },
+      include: [{
+        model: Devolucion,
+        attributes: [],
+        where: { estado: { [Op.notIn]: [ESTADOS.RECHAZADA, ESTADOS.RECHAZADA_EN_REVISION] } }
+      }]
+    });
+    const solicitadoPorLinea = {};
+    for (const d of previas) {
+      solicitadoPorLinea[d.id_detalle_pedido] = (solicitadoPorLinea[d.id_detalle_pedido] || 0) + d.cantidad;
+    }
+
+    const permite = pedido.estado === 'ENTREGADO';
+    res.send({
+      id_pedido: pedido.id_pedido,
+      id_cliente: pedido.id_cliente,
+      id_sucursal: pedido.id_sucursal,
+      estado_pedido: pedido.estado,
+      permite_devolucion: permite,
+      detalles: lineas.map(l => {
+        const solicitada = solicitadoPorLinea[l.id_detalle_pedido] || 0;
+        return {
+          id_detalle_pedido: l.id_detalle_pedido,
+          id_producto: l.id_producto,
+          Producto: l.Producto,
+          cantidad_comprada: l.cantidad,
+          cantidad_solicitada: solicitada,
+          cantidad_devolvible: permite ? Math.max(0, l.cantidad - solicitada) : 0
+        };
+      })
+    });
+  } catch (error) {
+    res.status(500).send({ message: "Error al calcular las cantidades devolvibles: " + error.message });
+  }
+};
+
+// GET /api/devoluciones/:id/historial
+// Línea de tiempo de una devolución: movimientos de inventario (qué pasó con cada prenda)
+// y auditoría (qué decisión tomó cada empleado), ambos en orden cronológico.
+exports.historial = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const devolucion = await Devolucion.findByPk(id, {
+      include: [
+        { model: db.cliente, attributes: ['id_cliente', 'nombre', 'apellido'] },
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+      ]
+    });
+    if (!devolucion) {
+      return res.status(404).send({ message: `No se encontró la devolución con id=${id}.` });
+    }
+
+    const movimientos = await MovimientoInventario.findAll({
+      where: { id_devolucion: id },
+      include: [
+        { model: Producto, attributes: ['nombre', 'talla', 'color'] },
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+      ],
+      order: [['id_movimiento', 'ASC']]
+    });
+
+    const auditoria = await db.auditoria.findAll({
+      where: { tabla_afectada: 'Devolucion', registro_afectado_id: id },
+      include: [{ model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }],
+      order: [['id_auditoria', 'ASC']]
+    });
+
+    res.send({ devolucion, movimientos, auditoria });
+  } catch (error) {
+    res.status(500).send({ message: "Error al recuperar el historial de la devolución: " + error.message });
   }
 };
 

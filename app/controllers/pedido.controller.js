@@ -106,9 +106,34 @@ exports.create = async (req, res) => {
 };
 
 
+// GET /api/pedidos?estado=&id_cliente=&id_sucursal=&desde=&hasta=
+// desde/hasta (YYYY-MM-DD) filtran por fecha_pedido, ambos extremos incluidos.
+// Ej.: pedidos entregados de un cliente (candidatos a devolución):
+//      /api/pedidos?id_cliente=3&estado=ENTREGADO
 exports.findAll = async (req, res) => {
   try {
-    const data = await Pedido.findAll();
+    const Op = db.Sequelize.Op;
+    const { estado, id_cliente, id_sucursal, desde, hasta } = req.query;
+    const where = {};
+    if (estado) {
+      if (!ESTADOS_PEDIDO_VALIDOS.includes(estado)) {
+        return res.status(400).send({ message: `Estado inválido. Valores permitidos: ${ESTADOS_PEDIDO_VALIDOS.join(', ')}.` });
+      }
+      where.estado = estado;
+    }
+    if (id_cliente) where.id_cliente = id_cliente;
+    if (id_sucursal) where.id_sucursal = id_sucursal;
+    if (desde || hasta) {
+      where.fecha_pedido = {};
+      if (desde) where.fecha_pedido[Op.gte] = new Date(`${desde}T00:00:00`);
+      if (hasta) where.fecha_pedido[Op.lte] = new Date(`${hasta}T23:59:59.999`);
+    }
+
+    const data = await Pedido.findAll({
+      where,
+      include: [{ model: Cliente, attributes: ['id_cliente', 'nombre', 'apellido'] }],
+      order: [['id_pedido', 'DESC']]
+    });
     res.send(data);
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al recuperar los pedidos." });

@@ -7,7 +7,11 @@ module.exports = app => {
   // cajero (o ADMIN) que atiende el mostrador a nombre del cliente.
   router.post("/", [verificarToken, isCajero], devoluciones.create);
   router.get("/", verificarToken, devoluciones.findAll);
+  // Cantidades aún devolvibles por línea de un pedido (apoyo al formulario de solicitud).
+  router.get("/pedido/:id_pedido/devolvible", verificarToken, devoluciones.devolvible);
   router.get("/:id", verificarToken, devoluciones.findOne);
+  // Línea de tiempo de una devolución (movimientos + auditoría).
+  router.get("/:id/historial", verificarToken, devoluciones.historial);
 
   // Decisión sobre la solicitud: ADMIN.
   router.put("/:id/aprobar", [verificarToken, isAdmin], devoluciones.aprobar);

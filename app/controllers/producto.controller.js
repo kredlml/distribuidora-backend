@@ -8,6 +8,24 @@ exports.create = async (req, res) => {
       return res.status(400).send({ message: "El nombre, precio unitario y id_categoria son obligatorios." });
     }
     
+    // Variante: id_producto_padre opcional. El padre debe existir y ser un producto base
+    // (no otra variante), porque los grupos de variantes tienen un solo nivel.
+    let id_producto_padre = null;
+    const padreRecibido = req.body.id_producto_padre;
+    if (padreRecibido !== undefined && padreRecibido !== null && padreRecibido !== '') {
+      if (!Number.isInteger(Number(padreRecibido)) || Number(padreRecibido) <= 0) {
+        return res.status(400).send({ message: "id_producto_padre debe ser un número de producto válido." });
+      }
+      const padre = await Producto.findByPk(padreRecibido);
+      if (!padre) {
+        return res.status(400).send({ message: "El producto padre indicado no existe." });
+      }
+      if (padre.id_producto_padre) {
+        return res.status(400).send({ message: "El producto padre debe ser un producto base: no puede ser a su vez una variante." });
+      }
+      id_producto_padre = padre.id_producto;
+    }
+
     const nuevoProducto = {
       nombre: req.body.nombre,
       descripcion: req.body.descripcion,
@@ -16,7 +34,8 @@ exports.create = async (req, res) => {
       precio_unitario: req.body.precio_unitario,
       id_categoria: req.body.id_categoria,
       stock_minimo: req.body.stock_minimo,
-      activo: req.body.activo !== undefined ? req.body.activo : true
+      activo: req.body.activo !== undefined ? req.body.activo : true,
+      id_producto_padre: id_producto_padre
     };
 
     const data = await Producto.create(nuevoProducto);
