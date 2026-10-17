@@ -115,3 +115,7 @@ main a:not(.btn) { color: inherit; text-decoration: underline; text-underline-of
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+dialog { max-height: 90vh; overflow: auto; }
+.btn.mini { padding: 6px 14px; font-size: 14px; }
+.item .ctl { align-items: center; }

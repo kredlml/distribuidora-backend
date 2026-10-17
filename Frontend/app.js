@@ -624,6 +624,77 @@ async function vistaCatalogo() {
   }
   const pie = (txt) => `<div class="err" role="alert"></div><div><button class="btn pri">${txt}</button></div>`;
 
+  function abrirEditar(p) {
+    const dlg = $("#dlg");
+    const bases = prods.filter((x) => !x.id_producto_padre && x.id_producto !== p.id_producto);
+    const tieneVar = prods.some((x) => x.id_producto_padre === p.id_producto);
+    dlg.innerHTML = `
+      <form id="fe">
+        <h1>Editar prenda #${p.id_producto}</h1>
+        <label class="sm muted">Nombre<input class="field" name="nombre" maxlength="120" required value="${esc(p.nombre)}"></label>
+        <label class="sm muted">Tipo de prenda<select class="field" name="id_categoria" required>${opts(cats.map((c) => [c.id_categoria, c.nombre]), "Elige el tipo")}</select></label>
+        <div class="grid2">
+          <label class="sm muted">Talla<input class="field" name="talla" maxlength="10" value="${esc(p.talla || "")}"></label>
+          <label class="sm muted">Color<input class="field" name="color" maxlength="40" value="${esc(p.color || "")}"></label>
+        </div>
+        <div class="grid2">
+          <label class="sm muted">Precio de venta<input class="field" name="precio_unitario" type="number" step="0.01" min="0.01" required value="${Number(p.precio_unitario).toFixed(2)}"></label>
+          <label class="sm muted">Stock mínimo<input class="field" name="stock_minimo" type="number" step="1" min="0" required value="${p.stock_minimo ?? 5}"></label>
+        </div>
+        <label class="sm muted">Variante de<select class="field" name="id_producto_padre" ${tieneVar ? "disabled" : ""}>${opts(bases.map((x) => [x.id_producto, lblProd(x)]), "Ninguna, es una prenda base")}</select></label>
+        ${tieneVar ? '<div class="muted sm">Esta prenda tiene variantes, por eso no puede ser variante de otra.</div>' : ""}
+        <label class="sm muted">Descripción<textarea class="field" name="descripcion" maxlength="255">${esc(p.descripcion || "")}</textarea></label>
+        <label class="chk"><input type="checkbox" name="activo" ${p.activo ? "checked" : ""}><span>Prenda activa (se puede vender y usar en cambios)</span></label>
+        <div class="err" role="alert"></div>
+        <div class="acts"><button type="button" class="btn" id="cx">Cancelar</button><button class="btn pri">Guardar cambios</button></div>
+      </form>`;
+    const f = $("#fe");
+    f.id_categoria.value = p.id_categoria ?? "";
+    f.id_producto_padre.value = p.id_producto_padre || "";
+    $("#cx").onclick = () => dlg.close();
+    f.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(f), err = f.querySelector(".err"), btn = f.querySelector("button.pri");
+      err.textContent = ""; btn.disabled = true;
+      const body = {
+        nombre: fd.get("nombre").trim(), id_categoria: Number(fd.get("id_categoria")),
+        talla: vacioANull(fd.get("talla")) ?? null, color: vacioANull(fd.get("color")) ?? null, descripcion: vacioANull(fd.get("descripcion")) ?? null,
+        precio_unitario: Number(fd.get("precio_unitario")), stock_minimo: Number(fd.get("stock_minimo")), activo: fd.get("activo") === "on",
+      };
+      if (!tieneVar) body.id_producto_padre = fd.get("id_producto_padre") ? Number(fd.get("id_producto_padre")) : null;
+      try {
+        await api(`/api/productos/${p.id_producto}`, { method: "PUT", body });
+        dlg.close(); aviso(`Prenda #${p.id_producto} actualizada.`);
+        await cargar(); pintarPane();
+      } catch (e) { err.textContent = e.message; btn.disabled = false; }
+    };
+    dlg.showModal();
+  }
+
+  function abrirEliminar(p) {
+    const dlg = $("#dlg");
+    dlg.innerHTML = `
+      <form id="fd">
+        <h1>Eliminar prenda #${p.id_producto}</h1>
+        <p>${esc(prod(p))}</p>
+        <p class="muted">Solo se puede eliminar si nunca tuvo variantes, inventario, ventas ni devoluciones. Si ya tiene historial, desactívala desde Editar. Esta acción no se puede deshacer.</p>
+        <div class="err" role="alert"></div>
+        <div class="acts"><button type="button" class="btn" id="cx">Cancelar</button><button class="btn bad">Eliminar prenda</button></div>
+      </form>`;
+    $("#cx").onclick = () => dlg.close();
+    $("#fd").onsubmit = async (ev) => {
+      ev.preventDefault();
+      const err = $("#fd .err"), btn = $("#fd button.bad");
+      err.textContent = ""; btn.disabled = true;
+      try {
+        await api(`/api/productos/${p.id_producto}`, { method: "DELETE" });
+        dlg.close(); aviso(`Prenda #${p.id_producto} eliminada.`);
+        await cargar(); pintarPane();
+      } catch (e) { err.textContent = e.message; btn.disabled = false; }
+    };
+    dlg.showModal();
+  }
+
   function pintarPane() {
     if (!$("#pane")) return;
     if (tab === "prenda") {
@@ -647,8 +718,11 @@ async function vistaCatalogo() {
         </form>
         <section class="card"><h2>Prendas registradas (${prods.length})</h2>
           ${[...prods].sort((a, b) => b.id_producto - a.id_producto).map((p) => `
-            <div class="item"><div>${esc(prod(p))}<br><span class="muted sm">#${p.id_producto}, ${esc(nombreCat(p.id_categoria))}${p.id_producto_padre ? ", variante de #" + p.id_producto_padre : ""}${p.activo ? "" : ", inactiva"}</span></div><span>${Number(p.precio_unitario).toFixed(2)}</span></div>`).join("")}
+            <div class="item"><div>${esc(prod(p))}<br><span class="muted sm">#${p.id_producto}, ${esc(nombreCat(p.id_categoria))}${p.id_producto_padre ? ", variante de #" + p.id_producto_padre : ""}${p.activo ? "" : ", inactiva"}</span></div><div class="ctl"><span>${Number(p.precio_unitario).toFixed(2)}</span><button class="btn mini" data-ed="${p.id_producto}">Editar</button>${miRol() === "ADMIN" ? `<button class="btn mini bad" data-del="${p.id_producto}">Eliminar</button>` : ""}</div></div>`).join("")}
         </section>`;
+      const porId = (b, k) => prods.find((x) => x.id_producto === Number(b.dataset[k]));
+      document.querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => abrirEditar(porId(b, "ed"))));
+      document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => abrirEliminar(porId(b, "del"))));
       enviar($("#f1"), "/api/productos", (fd) => ({
         nombre: fd.get("nombre").trim(), id_categoria: Number(fd.get("id_categoria")),
         talla: vacioANull(fd.get("talla")), color: vacioANull(fd.get("color")), descripcion: vacioANull(fd.get("descripcion")),
