@@ -1,0 +1,7 @@
+.row { display: grid; grid-template-columns: 64px 1.4fr 1.4fr auto 150px; gap: 16px; align-items: center; padding: 16px 24px; cursor: pointer; text-align: left; width: 100%; border: 0; }
+.row:hover { box-shadow: var(--sh-lg); }
+.id { font-size: 20px; letter-spacing: -.05em; }
+
+@media (max-width: 760px) {
+  .row { grid-template-columns: 48px 1fr; row-gap: 8px; }
+}

@@ -1,7 +1,9 @@
 const db = require("../models");
 const Pago = db.pago;
 const Pedido = db.pedido;
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); 
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+console.log(process.env.STRIPE_SECRET_KEY)
 
 exports.create = async (req, res) => {
   

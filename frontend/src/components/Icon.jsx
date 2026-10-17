@@ -1,0 +1,18 @@
+const ICON = {
+  list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
+  plus: "M12 5v14M5 12h14",
+  route: "M8 19h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7",
+  box: "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",
+  out: "M9 4H5v16h4M16 8l4 4-4 4M20 12H9",
+  go: "M5 12h14M13 6l6 6-6 6",
+  tag: "M20 12l-8 8-9-9V4h7zM7.5 7.5h.01",
+};
+
+export default function Icon({ name }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={ICON[name]} />
+      {name === "route" && <><circle cx="6" cy="19" r="2" /><circle cx="18" cy="5" r="2" /></>}
+    </svg>
+  );
+}

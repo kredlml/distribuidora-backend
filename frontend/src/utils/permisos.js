@@ -1,0 +1,23 @@
+// Reflejan los roles del backend; el servidor siempre valida.
+export const PERMISOS = {
+  aprobar: ["ADMIN"], rechazar: ["ADMIN"],
+  recibir: ["ADMIN", "BODEGUERO"], revisar: ["ADMIN", "BODEGUERO"],
+  reintegrar: ["ADMIN", "BODEGUERO"], cambiar: ["ADMIN", "BODEGUERO"],
+  crear: ["ADMIN", "CAJERO"],
+  catalogo: ["ADMIN", "BODEGUERO"],
+};
+
+export const ROLES = ["ADMIN", "CAJERO", "BODEGUERO"];
+export const rolDe = (sesion) => ((sesion || {}).puesto || "").trim().toUpperCase();
+export const puede = (rol, accion) => PERMISOS[accion].includes(rol);
+
+// Acciones disponibles según el estado (y tipo) de la devolución.
+export function accionesDe(d) {
+  switch (d.estado) {
+    case "SOLICITADA": return ["aprobar", "rechazar"];
+    case "APROBADA": return ["recibir"];
+    case "RECIBIDA": return ["revisar"];
+    case "ACEPTADA": return [d.tipo === "DEVOLUCION" ? "reintegrar" : "cambiar"];
+    default: return [];
+  }
+}
