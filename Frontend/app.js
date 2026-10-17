@@ -6,7 +6,7 @@ const API_URL = "http://localhost:8080";
 // ===== Utilidades =====
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const ACENTOS = [["cambio talla", "cambio de talla"], ["cambio variante", "cambio de variante"], ["devolucion", "devolución"], ["reintegracion", "reintegración"], ["revision", "revisión"], ["danado", "dañado"], ["envio", "envío"]];
+const ACENTOS = [["cambio talla", "cambio de talla"], ["cambio variante", "cambio de variante"], ["devolucion", "devolución"], ["reintegracion", "reintegración"], ["revision", "revisión"], ["danado", "dañado"], ["envio", "envío"], ["danada", "dañada"]];
 const humanizar = (s) => {
   if (!s) return "—";
   let t = s.toLowerCase().replace(/_/g, " ");
@@ -118,16 +118,16 @@ function renderRail() {
   r.hidden = !s;
   if (!s) { r.innerHTML = ""; return; }
   const ini = ((s.nombre || "?")[0] + ((s.apellido || "")[0] || "")).toUpperCase();
-  const enNueva = location.hash === "#/nueva";
-  const prox = (t, i) => `<button class="nav" disabled title="${t} (próxima entrega)" aria-label="${t}">${svg(i)}</button>`;
+  const h = location.hash, aqui = h === "#/nueva" ? "nn" : h.startsWith("#/trazabilidad") ? "nt" : h === "#/inventario" ? "ni" : "nl";
+  const btn = (id, t, i) => `<button class="nav ${aqui === id ? "on" : ""}" id="${id}" title="${t}" aria-label="${t}">${svg(i)}</button>`;
   r.innerHTML =
-    `<button class="nav ${enNueva ? "" : "on"}" id="nl" title="Devoluciones" aria-label="Devoluciones">${svg("list")}</button>` +
-    `<button class="nav ${enNueva ? "on" : ""}" id="nn" title="Nueva solicitud" aria-label="Nueva solicitud">${svg("plus")}</button>` +
-    prox("Trazabilidad", "route") + prox("Inventario", "box") +
+    btn("nl", "Devoluciones", "list") + btn("nn", "Nueva solicitud", "plus") + btn("nt", "Trazabilidad", "route") + btn("ni", "Inventario", "box") +
     `<span class="sp"></span><div class="avatar" title="${esc(s.nombre)} (${esc(s.puesto || "sin puesto")})">${esc(ini)}</div>` +
     `<button class="nav" id="out" title="Cerrar sesión" aria-label="Cerrar sesión">${svg("out")}</button>`;
   $("#nl").onclick = () => (location.hash = "#/");
   $("#nn").onclick = () => (location.hash = "#/nueva");
+  $("#nt").onclick = () => (location.hash = "#/trazabilidad");
+  $("#ni").onclick = () => (location.hash = "#/inventario");
   $("#out").onclick = salir;
 }
 
@@ -136,6 +136,8 @@ function ruta() {
   renderRail();
   if (!sesion()) return vistaLogin();
   if (location.hash === "#/nueva") return vistaNueva();
+  if (location.hash === "#/inventario") return vistaInventario();
+  if (location.hash.startsWith("#/trazabilidad")) return vistaTraza();
   const m = location.hash.match(/^#\/devolucion\/(\d+)$/);
   return m ? vistaDetalle(m[1]) : vistaLista();
 }
@@ -283,7 +285,7 @@ function pintarDetalle(d, h) {
     <section class="card">
       <div class="kv">
         <div><b>Cliente</b>${esc(nombreCli(d))}</div>
-        <div><b>Pedido</b>${d.id_pedido}</div>
+        <div><b>Pedido</b><a href="#/trazabilidad?pedido=${d.id_pedido}">${d.id_pedido}, ver trazabilidad</a></div>
         <div><b>Tipo</b>${humanizar(d.tipo)}</div>
         <div><b>Motivo</b>${humanizar(d.motivo)}</div>
         <div><b>Solicitada</b>${fecha(d.fecha_solicitud)}</div>
@@ -459,6 +461,125 @@ async function vistaNueva() {
       location.hash = "#/devolucion/" + r.devolucion.id_devolucion;
     } catch (e) { err.textContent = e.message; $("#go").disabled = false; }
   };
+}
+
+// ===== Trazabilidad =====
+function lineaMovs(movs, conProducto) {
+  if (!movs.length) return '<ul class="tl"><li class="vacio muted">Sin movimientos registrados.</li></ul>';
+  return `<ul class="tl">${movs.map((m) => `
+    <li><div>${humanizar(m.tipo_movimiento)}, ${m.cantidad} u.</div>
+    ${conProducto ? `<div class="muted sm">${esc(prod(m.Producto))}</div>` : ""}
+    ${m.estado_anterior || m.estado_nuevo ? `<div class="muted sm">${humanizar(m.estado_anterior)} a ${humanizar(m.estado_nuevo)}</div>` : ""}
+    <div class="muted sm">${esc(nombreEmp(m.Empleado))}, ${fechaDe(m)}${m.id_devolucion ? `, <a href="#/devolucion/${m.id_devolucion}">devolución #${m.id_devolucion}</a>` : ""}</div>
+    ${m.observacion ? `<div class="sm">${esc(/^[A-Z_]+$/.test(m.observacion) ? humanizar(m.observacion) : m.observacion)}</div>` : ""}</li>`).join("")}</ul>`;
+}
+
+async function vistaTraza() {
+  const qs = new URLSearchParams(location.hash.split("?")[1] || "");
+  let modo = qs.get("producto") ? "producto" : "pedido", productos = null;
+  const inicial = qs.get("producto") || qs.get("pedido") || "";
+  $("#app").innerHTML = `
+    <div class="head"><div><h1>Trazabilidad</h1><div class="muted sm">Historial de movimientos de inventario por pedido o por prenda.</div></div></div>
+    <div class="bar" id="modos"></div><div class="bar" id="ctl"></div><div class="stack" id="res"></div>`;
+
+  const pintarModos = () => {
+    $("#modos").innerHTML = ["pedido", "producto"].map((m) => `<button class="chip ${modo === m ? "on" : ""}" data-m="${m}">Por ${m}</button>`).join("");
+    document.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { modo = b.dataset.m; pintarModos(); pintarCtl(""); $("#res").innerHTML = ""; }));
+  };
+  async function pintarCtl(valor) {
+    if (modo === "pedido") {
+      $("#ctl").innerHTML = `<form class="search" id="tf"><input id="tq" type="number" min="1" placeholder="Número de pedido" aria-label="Número de pedido" value="${esc(valor)}"><button class="go" aria-label="Consultar">${svg("go")}</button></form>`;
+      $("#tf").onsubmit = (ev) => { ev.preventDefault(); const n = $("#tq").value; if (n) cargar(`/api/pedidos/${encodeURIComponent(n)}/historial`, "pedido"); };
+      return;
+    }
+    if (!productos) {
+      try { productos = await api("/api/productos"); }
+      catch (e) { if ($("#ctl")) $("#ctl").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+    }
+    if (!$("#ctl") || modo !== "producto") return;
+    $("#ctl").innerHTML = `<select class="pill" id="tp" aria-label="Producto">${opts(productos.map((p) => [p.id_producto, `#${p.id_producto} ${prod(p)}`]), "Elige un producto")}</select>`;
+    $("#tp").value = valor;
+    $("#tp").onchange = (ev) => ev.target.value && cargar(`/api/productos/${ev.target.value}/historial`, "producto");
+  }
+  async function cargar(url, tipo) {
+    $("#res").innerHTML = `<div class="card empty muted">Consultando…</div>`;
+    try {
+      const d = await api(url);
+      if (!$("#res")) return;
+      const x = tipo === "pedido" ? d.pedido : d.producto;
+      const cab = tipo === "pedido"
+        ? `<div><b>Pedido</b>${x.id_pedido}</div><div><b>Estado</b>${humanizar(x.estado)}</div><div><b>Fecha</b>${fecha(x.fecha_pedido)}</div><div><b>Total</b>${x.total != null ? Number(x.total).toFixed(2) : "—"}</div>`
+        : `<div><b>Producto</b>#${x.id_producto} ${esc(prod(x))}</div>`;
+      $("#res").innerHTML = `<section class="card"><div class="kv">${cab}</div></section><section class="card"><h2>Movimientos</h2>${lineaMovs(d.movimientos || [], tipo === "pedido")}</section>`;
+    } catch (e) {
+      if (!$("#res") || !sesion()) return;
+      $("#res").innerHTML = `<div class="card empty"><p class="err">${esc(e.message)}</p></div>`;
+    }
+  }
+  pintarModos();
+  await pintarCtl(inicial);
+  if (inicial) cargar(modo === "pedido" ? `/api/pedidos/${encodeURIComponent(inicial)}/historial` : `/api/productos/${encodeURIComponent(inicial)}/historial`, modo);
+}
+
+// ===== Inventario por estado =====
+const INV_ESTADOS = ["DISPONIBLE", "DANADA", "DEFECTUOSA"];
+const INV_TONO = { DISPONIBLE: "ok", DANADA: "bad", DEFECTUOSA: "bad" };
+
+async function vistaInventario() {
+  const f = { estado: "", suc: "", q: "" };
+  $("#app").innerHTML = `
+    <div class="head"><div><h1>Inventario por estado</h1><div class="muted sm" id="cnt">&nbsp;</div></div></div>
+    <div class="bar" id="tot"></div>
+    <div class="bar"><form class="search" id="sf"><input id="q" placeholder="Buscar producto por nombre, talla, color o número" aria-label="Buscar"><button class="go" aria-label="Buscar">${svg("go")}</button></form></div>
+    <div class="bar" id="chips"></div>
+    <div class="bar"><select class="pill" id="suc" aria-label="Sucursal"></select></div>
+    <div class="stack" id="lista"><div class="card empty muted">Cargando inventario…</div></div>`;
+  let inv, prods, sucs;
+  try {
+    [inv, prods, sucs] = await Promise.all([api("/api/inventario"), api("/api/productos"), api("/api/sucursales").catch(() => [])]);
+  } catch (e) {
+    if ($("#lista") && sesion()) $("#lista").innerHTML = `<div class="card empty"><p class="err">${esc(e.message)}</p></div>`;
+    return;
+  }
+  if (!$("#lista")) return;
+  const P = Object.fromEntries(prods.map((p) => [p.id_producto, p]));
+  const S = Object.fromEntries(sucs.map((x) => [x.id_sucursal, x.nombre]));
+  const nombreSuc = (id) => S[id] || `Sucursal ${id}`;
+  const estados = [...new Set([...INV_ESTADOS, ...inv.map((i) => i.estado)])];
+  const grupos = {};
+  inv.forEach((i) => {
+    const g = (grupos[i.id_producto + "|" + i.id_sucursal] ||= { id_producto: i.id_producto, id_sucursal: i.id_sucursal, est: {} });
+    g.est[i.estado] = (g.est[i.estado] || 0) + i.cantidad;
+  });
+  $("#suc").innerHTML = opts([...new Set(inv.map((i) => i.id_sucursal))].map((id) => [id, nombreSuc(id)]), "Todas las sucursales");
+
+  function pintarChips() {
+    $("#chips").innerHTML = ["", ...estados].map((e) => `<button class="chip ${f.estado === e ? "on" : ""}" data-e="${e}">${e ? humanizar(e) : "Todos"}</button>`).join("");
+    document.querySelectorAll("[data-e]").forEach((b) => (b.onclick = () => { f.estado = b.dataset.e; pintarChips(); pintar(); }));
+  }
+  function pintar() {
+    const q = f.q.trim().toLowerCase();
+    let gs = Object.values(grupos).filter((g) => (!f.suc || String(g.id_sucursal) === f.suc) && (!q || `${g.id_producto} ${prod(P[g.id_producto])}`.toLowerCase().includes(q)));
+    const tot = {};
+    gs.forEach((g) => estados.forEach((e) => (tot[e] = (tot[e] || 0) + (g.est[e] || 0))));
+    $("#tot").innerHTML = estados.map((e) => `<span class="st ${INV_TONO[e] || ""}">${humanizar(e)}: ${tot[e] || 0}</span>`).join("");
+    if (f.estado) gs = gs.filter((g) => g.est[f.estado] > 0);
+    gs.sort((a, b) => a.id_producto - b.id_producto || a.id_sucursal - b.id_sucursal);
+    $("#cnt").textContent = `${gs.length} combinación${gs.length === 1 ? "" : "es"} de producto y sucursal`;
+    $("#lista").innerHTML = gs.length
+      ? gs.map((g) => `
+        <div class="card inv">
+          <span>${esc(prod(P[g.id_producto]))}<br><span class="muted sm">Producto #${g.id_producto}</span></span>
+          <span>${esc(nombreSuc(g.id_sucursal))}</span>
+          <span class="qtys">${estados.map((e) => `<span class="st ${INV_TONO[e] || ""} ${g.est[e] ? "" : "zero"}">${humanizar(e)} ${g.est[e] || 0}</span>`).join("")}</span>
+        </div>`).join("")
+      : `<div class="card empty muted">No hay existencias con estos filtros.</div>`;
+  }
+  pintarChips();
+  $("#sf").onsubmit = (ev) => { ev.preventDefault(); pintar(); };
+  $("#q").oninput = (ev) => { f.q = ev.target.value; pintar(); };
+  $("#suc").onchange = (ev) => { f.suc = ev.target.value; pintar(); };
+  pintar();
 }
 
 ruta();

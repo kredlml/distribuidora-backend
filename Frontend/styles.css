@@ -106,3 +106,9 @@ label > .field { margin-top: 4px; }
 .tl li.vacio::before { display: none; }
 
 .field { font-size: 16px; }
+
+main a:not(.btn) { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.inv { display: grid; grid-template-columns: 1.6fr 1fr 2fr; gap: 16px; align-items: center; padding: 16px 24px; }
+.qtys { display: flex; gap: 8px; flex-wrap: wrap; }
+.st.zero { opacity: .45; }
+@media (max-width: 760px) { .inv { grid-template-columns: 1fr; gap: 8px; } }
