@@ -80,6 +80,7 @@ const PERMISOS = {
   recibir: ["ADMIN", "BODEGUERO"], revisar: ["ADMIN", "BODEGUERO"],
   reintegrar: ["ADMIN", "BODEGUERO"], cambiar: ["ADMIN", "BODEGUERO"],
   crear: ["ADMIN", "CAJERO"],
+  catalogo: ["ADMIN", "BODEGUERO"],
 };
 const miRol = () => ((sesion() || {}).puesto || "").trim().toUpperCase();
 const puede = (a) => PERMISOS[a].includes(miRol());
@@ -110,6 +111,7 @@ const ICON = {
   box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>',
   out: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
   go: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  tag: '<path d="M20 12l-8 8-9-9V4h7zM7.5 7.5h.01"/>',
 };
 const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 
@@ -118,16 +120,17 @@ function renderRail() {
   r.hidden = !s;
   if (!s) { r.innerHTML = ""; return; }
   const ini = ((s.nombre || "?")[0] + ((s.apellido || "")[0] || "")).toUpperCase();
-  const h = location.hash, aqui = h === "#/nueva" ? "nn" : h.startsWith("#/trazabilidad") ? "nt" : h === "#/inventario" ? "ni" : "nl";
+  const h = location.hash, aqui = h === "#/nueva" ? "nn" : h.startsWith("#/trazabilidad") ? "nt" : h === "#/inventario" ? "ni" : h === "#/catalogo" ? "nc" : "nl";
   const btn = (id, t, i) => `<button class="nav ${aqui === id ? "on" : ""}" id="${id}" title="${t}" aria-label="${t}">${svg(i)}</button>`;
   r.innerHTML =
-    btn("nl", "Devoluciones", "list") + btn("nn", "Nueva solicitud", "plus") + btn("nt", "Trazabilidad", "route") + btn("ni", "Inventario", "box") +
+    btn("nl", "Devoluciones", "list") + btn("nn", "Nueva solicitud", "plus") + btn("nt", "Trazabilidad", "route") + btn("ni", "Inventario", "box") + (PERMISOS.catalogo.includes(miRol()) ? btn("nc", "Catálogo y stock", "tag") : "") +
     `<span class="sp"></span><div class="avatar" title="${esc(s.nombre)} (${esc(s.puesto || "sin puesto")})">${esc(ini)}</div>` +
     `<button class="nav" id="out" title="Cerrar sesión" aria-label="Cerrar sesión">${svg("out")}</button>`;
   $("#nl").onclick = () => (location.hash = "#/");
   $("#nn").onclick = () => (location.hash = "#/nueva");
   $("#nt").onclick = () => (location.hash = "#/trazabilidad");
   $("#ni").onclick = () => (location.hash = "#/inventario");
+  if ($("#nc")) $("#nc").onclick = () => (location.hash = "#/catalogo");
   $("#out").onclick = salir;
 }
 
@@ -137,6 +140,7 @@ function ruta() {
   if (!sesion()) return vistaLogin();
   if (location.hash === "#/nueva") return vistaNueva();
   if (location.hash === "#/inventario") return vistaInventario();
+  if (location.hash === "#/catalogo") return vistaCatalogo();
   if (location.hash.startsWith("#/trazabilidad")) return vistaTraza();
   const m = location.hash.match(/^#\/devolucion\/(\d+)$/);
   return m ? vistaDetalle(m[1]) : vistaLista();
@@ -580,6 +584,112 @@ async function vistaInventario() {
   $("#q").oninput = (ev) => { f.q = ev.target.value; pintar(); };
   $("#suc").onchange = (ev) => { f.suc = ev.target.value; pintar(); };
   pintar();
+}
+
+// ===== Catálogo y stock (ADMIN / BODEGUERO) =====
+const vacioANull = (v) => { const t = String(v ?? "").trim(); return t === "" ? undefined : t; };
+
+async function vistaCatalogo() {
+  const ok = PERMISOS.catalogo.includes(miRol());
+  $("#app").innerHTML = `
+    <div class="head"><div><h1>Catálogo y stock</h1><div class="muted sm">Registra prendas, tipos de prenda e ingresos de inventario.</div></div></div>
+    ${ok ? '<div class="bar" id="tabs"></div><div class="stack" id="pane"><div class="card empty muted">Cargando…</div></div>' : '<div class="card err">Esta sección es solo para ADMIN o BODEGUERO.</div>'}`;
+  if (!ok) return;
+  let cats = [], prods = [], sucs = [], tab = "prenda";
+  const cargar = async () => { [cats, prods, sucs] = await Promise.all([api("/api/categorias"), api("/api/productos"), api("/api/sucursales").catch(() => [])]); };
+  try { await cargar(); }
+  catch (e) { if ($("#pane") && sesion()) $("#pane").innerHTML = `<div class="card empty"><p class="err">${esc(e.message)}</p></div>`; return; }
+  if (!$("#pane")) return;
+
+  const nombreCat = (id) => (cats.find((c) => c.id_categoria === id) || {}).nombre || "Sin tipo";
+  const lblProd = (p) => `#${p.id_producto} ${prod(p)}`;
+  const TABS = [["prenda", "Nueva prenda"], ["stock", "Ingresar stock"], ["tipos", "Tipos de prenda"]];
+  function pintarTabs() {
+    $("#tabs").innerHTML = TABS.map(([k, t]) => `<button class="chip ${tab === k ? "on" : ""}" data-t="${k}">${t}</button>`).join("");
+    document.querySelectorAll("[data-t]").forEach((b) => (b.onclick = () => { tab = b.dataset.t; pintarTabs(); pintarPane(); }));
+  }
+  // Envío común: valida con el backend, avisa y vuelve a cargar los catálogos.
+  function enviar(form, path, armar, mensaje) {
+    form.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const err = form.querySelector(".err"), btn = form.querySelector("button.pri");
+      err.textContent = ""; btn.disabled = true;
+      try {
+        const r = await api(path, { method: "POST", body: armar(new FormData(form)) });
+        aviso(mensaje(r));
+        await cargar();
+        if ($("#pane")) pintarPane();
+      } catch (e) { err.textContent = e.message; btn.disabled = false; }
+    };
+  }
+  const pie = (txt) => `<div class="err" role="alert"></div><div><button class="btn pri">${txt}</button></div>`;
+
+  function pintarPane() {
+    if (!$("#pane")) return;
+    if (tab === "prenda") {
+      const bases = prods.filter((p) => !p.id_producto_padre);
+      $("#pane").innerHTML = `
+        <form class="card stack" id="f1">
+          <h2>Nueva prenda</h2>
+          <label class="sm muted">Nombre<input class="field" name="nombre" maxlength="120" required></label>
+          <label class="sm muted">Tipo de prenda<select class="field" name="id_categoria" required>${opts(cats.map((c) => [c.id_categoria, c.nombre]), cats.length ? "Elige el tipo" : "Primero crea un tipo de prenda")}</select></label>
+          <div class="grid2">
+            <label class="sm muted">Talla<input class="field" name="talla" maxlength="10"></label>
+            <label class="sm muted">Color<input class="field" name="color" maxlength="40"></label>
+          </div>
+          <div class="grid2">
+            <label class="sm muted">Precio de venta<input class="field" name="precio_unitario" type="number" step="0.01" min="0.01" required></label>
+            <label class="sm muted">Stock mínimo (alerta de stock crítico)<input class="field" name="stock_minimo" type="number" step="1" min="0" value="5"></label>
+          </div>
+          <label class="sm muted">Variante de<select class="field" name="id_producto_padre">${opts(bases.map((p) => [p.id_producto, lblProd(p)]), "Ninguna, es una prenda base")}</select></label>
+          <label class="sm muted">Descripción (opcional)<textarea class="field" name="descripcion" maxlength="255"></textarea></label>
+          ${pie("Registrar prenda")}
+        </form>
+        <section class="card"><h2>Prendas registradas (${prods.length})</h2>
+          ${[...prods].sort((a, b) => b.id_producto - a.id_producto).map((p) => `
+            <div class="item"><div>${esc(prod(p))}<br><span class="muted sm">#${p.id_producto}, ${esc(nombreCat(p.id_categoria))}${p.id_producto_padre ? ", variante de #" + p.id_producto_padre : ""}${p.activo ? "" : ", inactiva"}</span></div><span>${Number(p.precio_unitario).toFixed(2)}</span></div>`).join("")}
+        </section>`;
+      enviar($("#f1"), "/api/productos", (fd) => ({
+        nombre: fd.get("nombre").trim(), id_categoria: Number(fd.get("id_categoria")),
+        talla: vacioANull(fd.get("talla")), color: vacioANull(fd.get("color")), descripcion: vacioANull(fd.get("descripcion")),
+        precio_unitario: Number(fd.get("precio_unitario")),
+        stock_minimo: vacioANull(fd.get("stock_minimo")) === undefined ? undefined : Number(fd.get("stock_minimo")),
+        id_producto_padre: fd.get("id_producto_padre") ? Number(fd.get("id_producto_padre")) : undefined,
+      }), (r) => `Prenda #${r.id_producto} registrada.`);
+    } else if (tab === "stock") {
+      $("#pane").innerHTML = `
+        <form class="card stack" id="f2">
+          <h2>Ingresar stock</h2>
+          <label class="sm muted">Prenda<select class="field" name="id_producto" required>${opts(prods.filter((p) => p.activo).map((p) => [p.id_producto, lblProd(p)]), "Elige la prenda")}</select></label>
+          ${sucs.length
+            ? `<label class="sm muted">Sucursal<select class="field" name="id_sucursal" required>${opts(sucs.map((x) => [x.id_sucursal, x.nombre]), "Elige la sucursal")}</select></label>`
+            : `<label class="sm muted">Número de sucursal<input class="field" name="id_sucursal" type="number" min="1" step="1" required></label>`}
+          <div class="grid2">
+            <label class="sm muted">Cantidad<input class="field" name="cantidad" type="number" step="1" min="1" required></label>
+            <label class="sm muted">Lote (opcional)<input class="field" name="lote"></label>
+          </div>
+          <label class="sm muted">Estado<select class="field" name="estado"><option value="DISPONIBLE">Disponible</option><option value="DANADA">Dañada</option><option value="DEFECTUOSA">Defectuosa</option></select></label>
+          ${pie("Ingresar al inventario")}
+        </form>`;
+      enviar($("#f2"), "/api/inventario", (fd) => ({
+        id_producto: Number(fd.get("id_producto")), id_sucursal: Number(fd.get("id_sucursal")),
+        cantidad: Number(fd.get("cantidad")), lote: vacioANull(fd.get("lote")), estado: fd.get("estado"),
+      }), (r) => `Stock registrado: ${r.cantidad} u. de la prenda #${r.id_producto}.`);
+    } else {
+      $("#pane").innerHTML = `
+        <form class="card stack" id="f3">
+          <h2>Nuevo tipo de prenda</h2>
+          <label class="sm muted">Nombre<input class="field" name="nombre" maxlength="60" required></label>
+          <label class="sm muted">Descripción (opcional)<input class="field" name="descripcion" maxlength="200"></label>
+          ${pie("Crear tipo de prenda")}
+        </form>
+        <section class="card"><h2>Tipos registrados (${cats.length})</h2>
+          ${cats.length ? cats.map((c) => `<div class="item"><div>${esc(c.nombre)}<br><span class="muted sm">${esc(c.descripcion || "Sin descripción")}</span></div></div>`).join("") : '<p class="muted">Aún no hay tipos de prenda.</p>'}
+        </section>`;
+      enviar($("#f3"), "/api/categorias", (fd) => ({ nombre: fd.get("nombre").trim(), descripcion: vacioANull(fd.get("descripcion")) }), (r) => `Tipo «${r.nombre}» creado.`);
+    }
+  }
+  pintarTabs(); pintarPane();
 }
 
 ruta();

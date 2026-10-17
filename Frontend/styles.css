@@ -112,3 +112,6 @@ main a:not(.btn) { color: inherit; text-decoration: underline; text-underline-of
 .qtys { display: flex; gap: 8px; flex-wrap: wrap; }
 .st.zero { opacity: .45; }
 @media (max-width: 760px) { .inv { grid-template-columns: 1fr; gap: 8px; } }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
