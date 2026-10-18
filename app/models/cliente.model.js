@@ -14,10 +14,15 @@ module.exports = (sequelize, Sequelize) => {
       type: Sequelize.DATEONLY, 
       defaultValue: Sequelize.NOW 
     },
-    activo: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true }
+    activo: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+    // Hash bcrypt para la tienda en línea. NULL = cliente registrado en mostrador, sin cuenta web.
+    password: { type: Sequelize.STRING, allowNull: true }
   }, {
     tableName: 'Cliente',
-    timestamps: false
+    timestamps: false,
+    // El hash nunca sale en consultas normales (listados, includes); el login usa el scope conPassword.
+    defaultScope: { attributes: { exclude: ['password'] } },
+    scopes: { conPassword: { attributes: { include: ['password'] } } }
   });
   return Cliente;
 };

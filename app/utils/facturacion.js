@@ -155,6 +155,138 @@ async function procesarPedidoSiEstaPagado(id_pedido, id_empleado, t) {
   return pedido;
 }
 
+// Crea un pedido PENDIENTE con sus líneas. Lo usan la venta de mostrador (POST /api/pedidos)
+// y la tienda en línea (POST /api/tienda/pedidos). `lineasRecibidas` = [{ id_producto, cantidad }].
+// Las líneas del mismo producto se unen y se procesan en orden de id_producto para que todas
+// las ventas bloqueen el inventario en el mismo orden (sin deadlocks). El precio sale del
+// catálogo y el total lo calculan los hooks de DetallePedido.
+async function crearPedido({ id_cliente, id_sucursal, lineasRecibidas, id_empleado, direccion_entrega, origen }, t) {
+  if (!id_cliente || !id_sucursal || !Array.isArray(lineasRecibidas) || lineasRecibidas.length === 0
+    || lineasRecibidas.some(l => !l || !l.id_producto || !l.cantidad)) {
+    throw errorHttp(400, "Faltan datos obligatorios para procesar la venta.");
+  }
+
+  const porProducto = new Map();
+  for (const l of lineasRecibidas) {
+    const id = Number(l.id_producto);
+    porProducto.set(id, (porProducto.get(id) || 0) + validarCantidad(l.cantidad));
+  }
+  const lineas = [...porProducto.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([id_producto, cantidad]) => ({ id_producto, cantidad }));
+
+  const cliente = await db.cliente.findByPk(id_cliente, { transaction: t });
+  if (!cliente || !cliente.activo) {
+    throw errorHttp(400, `El cliente ${id_cliente} no existe o está inactivo.`);
+  }
+  const sucursal = await db.sucursal.findByPk(id_sucursal, { transaction: t });
+  if (!sucursal || !sucursal.activo) {
+    throw errorHttp(400, `La sucursal ${id_sucursal} no existe o está inactiva.`);
+  }
+
+  const pedido = await db.pedido.create({
+    estado: 'PENDIENTE',
+    total: 0,
+    id_cliente,
+    id_sucursal,
+    id_empleado: id_empleado || null,
+    direccion_entrega: direccion_entrega || null
+  }, { transaction: t });
+
+  for (const linea of lineas) {
+    const producto = await obtenerProductoVendible(linea.id_producto, t);
+
+    await descontarStockVenta({
+      id_producto: producto.id_producto,
+      id_sucursal,
+      cantidad: linea.cantidad,
+      id_pedido: pedido.id_pedido,
+      id_empleado
+    }, t);
+
+    // subtotal y Pedido.total los calculan los hooks del modelo DetallePedido.
+    await db.detalle_pedido.create({
+      cantidad: linea.cantidad,
+      precio_unitario: producto.precio_unitario,
+      id_pedido: pedido.id_pedido,
+      id_producto: producto.id_producto
+    }, { transaction: t });
+  }
+
+  // El hook actualizó la fila en BD; se recarga para responder con el total real.
+  await pedido.reload({ transaction: t });
+
+  await registrarAuditoria({
+    id_empleado,
+    accion: 'PEDIDO_CREADO',
+    tabla_afectada: 'Pedido',
+    registro_afectado_id: pedido.id_pedido,
+    detalles: `Pedido #${pedido.id_pedido} creado${origen ? ' ' + origen : ''} con ${lineas.length} línea(s) por un total de ${Number(pedido.total).toFixed(2)}.`
+  }, t);
+
+  return pedido;
+}
+
+// Cancela un pedido PENDIENTE (el pedido debe venir bloqueado por la transacción): exige que
+// no tenga pagos completados ni pendientes y devuelve a stock DISPONIBLE todas sus líneas.
+async function cancelarPedido(pedido, { id_empleado, motivo }, t) {
+  if (pedido.estado !== 'PENDIENTE') {
+    throw errorHttp(400, `Solo se puede cancelar un pedido PENDIENTE de pago (estado actual: ${pedido.estado}).`);
+  }
+  if (await totalPagado(pedido.id_pedido, t) > 0) {
+    throw errorHttp(400, "El pedido tiene pagos completados y no puede cancelarse sin gestionar antes el reembolso.");
+  }
+  // Un pago PENDIENTE (p.ej. Stripe) podría confirmarse después de cancelar: se exige anularlo antes.
+  if (await totalPagado(pedido.id_pedido, t, ['PENDIENTE']) > 0) {
+    throw errorHttp(400, "El pedido tiene pagos PENDIENTES; anúlelos (PUT /api/pagos/:id/anular) antes de cancelarlo.");
+  }
+
+  const detalles = await db.detalle_pedido.findAll({
+    where: { id_pedido: pedido.id_pedido },
+    order: [['id_producto', 'ASC']], // mismo orden de bloqueo de inventario que las ventas
+    transaction: t
+  });
+  for (const detalle of detalles) {
+    await reintegrarStockVenta({
+      id_producto: detalle.id_producto,
+      id_sucursal: pedido.id_sucursal,
+      cantidad: detalle.cantidad,
+      id_pedido: pedido.id_pedido,
+      id_empleado,
+      observacion: `Pedido #${pedido.id_pedido} cancelado${motivo ? ' ' + motivo : ''}; unidades devueltas a stock.`
+    }, t);
+  }
+
+  pedido.estado = 'CANCELADO';
+  await pedido.save({ transaction: t });
+}
+
+// Stripe confirmó el cobro de un pago (webhook o sincronización desde la tienda). El pago debe
+// venir bloqueado y en PENDIENTE/FALLIDO. El dinero ya entró: si el pedido sigue PENDIENTE y el
+// monto cabe en el saldo, cuenta y el pedido puede pasar a PROCESADO; si no (pedido cancelado,
+// ya pagado o cobro de más), se registra igual pero queda marcado para reembolso.
+async function registrarCobroExitoso(pago, t) {
+  const pedido = await db.pedido.findByPk(pago.id_pedido, { transaction: t, lock: t.LOCK.UPDATE });
+  const saldo = pedido ? Math.round((Number(pedido.total) - await totalPagado(pedido.id_pedido, t)) * 100) / 100 : 0;
+
+  pago.estado_pago = 'COMPLETADO';
+  await pago.save({ transaction: t });
+
+  if (!pedido || pedido.estado !== 'PENDIENTE' || Number(pago.monto) > saldo) {
+    await registrarAuditoria({
+      id_empleado: null,
+      accion: 'PAGO_REQUIERE_REEMBOLSO',
+      tabla_afectada: 'Pago',
+      registro_afectado_id: pago.id_pago,
+      detalles: `Stripe cobró ${Number(pago.monto).toFixed(2)} (pago #${pago.id_pago}) pero el pedido #${pago.id_pedido} ${pedido ? `está ${pedido.estado} con saldo ${saldo.toFixed(2)}` : 'no existe'}; debe reembolsarse.`
+    }, t);
+    console.warn(`Stripe: el pago #${pago.id_pago} se cobró pero requiere reembolso.`);
+    return pedido;
+  }
+
+  return procesarPedidoSiEstaPagado(pago.id_pedido, null, t);
+}
+
 module.exports = {
   errorHttp,
   validarCantidad,
@@ -164,5 +296,8 @@ module.exports = {
   reintegrarStockVenta,
   totalPagado,
   totalComprometido,
-  procesarPedidoSiEstaPagado
+  procesarPedidoSiEstaPagado,
+  crearPedido,
+  cancelarPedido,
+  registrarCobroExitoso
 };

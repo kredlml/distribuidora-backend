@@ -49,7 +49,8 @@ function req(name, method, urlPath, opts = {}) {
 
   const headers = [];
   if (body) headers.push({ key: "Content-Type", value: "application/json" });
-  if (auth) headers.push({ key: "Authorization", value: "Bearer {{token}}" });
+  // auth: true usa {{token}} (empleado); un string usa esa variable (p.ej. "token_cliente").
+  if (auth) headers.push({ key: "Authorization", value: `Bearer {{${auth === true ? "token" : auth}}}` });
 
   const encodeQueryValue = (v) => (/^\{\{.*\}\}$/.test(String(v)) ? v : encodeURIComponent(v));
 
@@ -180,12 +181,16 @@ const sucursales = folder("1. Sucursales", [
 
 const clientes = folder("2. Clientes", [
   req("Crear cliente", "POST", "/api/clientes", {
+    auth: true,
     body: { nombre: "Maria", apellido: "Lopez", telefono: "55667788", email: "maria.lopez.{{$timestamp}}@example.com", direccion: "Zona 10, Guatemala", activo: true },
     tests: captureId("id_cliente", "body.id_cliente", "Cliente creado"),
     description: "email con {{$timestamp}} porque Cliente.email es unique en el modelo (app/models/cliente.model.js) - un valor fijo solo funciona la primera vez que se corre la coleccion.",
   }),
   req("Listar clientes", "GET", "/api/clientes", {
-    tests: expectStatus(200),
+    auth: true,
+    tests: `${expectStatus(200)}
+pm.test("No expone contraseñas", () => pm.expect(pm.response.json().every(c => !("password" in c))).to.be.true);`,
+    description: "Requiere estar autenticado como empleado (datos personales). Alta en mostrador: CAJERO o ADMIN.",
   }),
 ]);
 
@@ -597,6 +602,80 @@ webhook.item[0].request.header.push({ key: "stripe-signature", value: "t=0,v1=fi
 webhook.item[0].request.body = jsonBody({ id: "evt_ejemplo", type: "payment_intent.succeeded", data: { object: { id: "pi_ejemplo" } } });
 
 // ---------------------------------------------------------------------------
+// 16. Tienda en línea (cliente)
+// ---------------------------------------------------------------------------
+
+const CAPTURE_CLIENTE = `
+pm.test("Sesión de cliente", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));
+const body = pm.response.json();
+if (body.token) pm.collectionVariables.set("token_cliente", body.token);
+`.trim();
+
+const tienda = folder(
+  "16. Tienda en línea (cliente)",
+  [
+    req("Registro de cliente", "POST", "/api/tienda/auth/registro", {
+      prerequest: 'pm.collectionVariables.set("cliente_email", `cliente.${Date.now()}@example.com`);',
+      body: { nombre: "Lucia", apellido: "Mendez", email: "{{cliente_email}}", password: "Cliente123", telefono: "55551234", direccion: "Zona 15, Guatemala" },
+      tests: CAPTURE_CLIENTE,
+      description: "Cuenta de la tienda (contraseña mínimo 8). Devuelve un token de tipo CLIENTE que se guarda en token_cliente.",
+    }),
+    req("Login de cliente", "POST", "/api/tienda/auth/login", {
+      body: { email: "{{cliente_email}}", password: "Cliente123" },
+      tests: CAPTURE_CLIENTE,
+    }),
+    req("Token de cliente en el panel (rechazado)", "GET", "/api/pedidos", {
+      auth: "token_cliente",
+      tests: expectStatus(403, "403 esperado: un token de cliente no da acceso al panel de empleados"),
+    }),
+    req("Catálogo (público)", "GET", "/api/tienda/catalogo", {
+      query: { id_sucursal: "{{id_sucursal}}" },
+      tests: expectStatus(200),
+      description: "Prendas agrupadas (producto base + variantes de talla/color) con stock DISPONIBLE en la sucursal indicada. Filtros opcionales: q, id_categoria.",
+    }),
+    req("Detalle de prenda (público)", "GET", "/api/tienda/catalogo/{{id_producto}}", {
+      tests: expectStatus(200),
+      description: "Acepta el id de cualquier variante; devuelve el grupo con stock por sucursal.",
+    }),
+    req("Perfil del cliente", "GET", "/api/tienda/perfil", { auth: "token_cliente", tests: expectStatus(200) }),
+    req("Crear pedido (checkout)", "POST", "/api/tienda/pedidos", {
+      auth: "token_cliente",
+      body: { id_sucursal: "{{id_sucursal}}", direccion_entrega: "Zona 15, Guatemala", detalles: [{ id_producto: "{{id_producto}}", cantidad: 1 }] },
+      tests: captureId("id_pedido_tienda", "body.pedido && body.pedido.id_pedido", "Pedido de la tienda creado"),
+      description: "El cliente sale del token. Nace PENDIENTE de pago con el total calculado por los hooks. Maximo 3 pedidos pendientes por cliente y 20 unidades por prenda.",
+    }),
+    req("Mis pedidos", "GET", "/api/tienda/pedidos", { auth: "token_cliente", tests: expectStatus(200) }),
+    req("Detalle de mi pedido", "GET", "/api/tienda/pedidos/{{id_pedido_tienda}}", { auth: "token_cliente", tests: expectStatus(200) }),
+    req("Iniciar pago con tarjeta", "POST", "/api/tienda/pedidos/{{id_pedido_tienda}}/pago", {
+      auth: "token_cliente",
+      tests: `pm.test("Pago iniciado", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));`,
+      description: "Con una clave real de Stripe (sk_test_) crea un PaymentIntent y devuelve client_secret para confirmar la tarjeta con Stripe.js desde la tienda; repetirlo retoma el mismo PaymentIntent. Con la clave simulada el pago se completa al instante y el pedido pasa a PROCESADO.",
+    }),
+    req("Sincronizar pago", "POST", "/api/tienda/pedidos/{{id_pedido_tienda}}/pago/confirmar", {
+      auth: "token_cliente",
+      tests: expectStatus(200),
+      description: "Consulta el PaymentIntent en Stripe y, si ya se cobro, registra el pago sin esperar al webhook. Desde Postman (sin tarjeta) el pedido sigue PENDIENTE con una clave real.",
+    }),
+    req("Crear pedido para cancelar", "POST", "/api/tienda/pedidos", {
+      auth: "token_cliente",
+      body: { id_sucursal: "{{id_sucursal}}", detalles: [{ id_producto: "{{id_producto}}", cantidad: 1 }] },
+      tests: captureId("id_pedido_cancelar", "body.pedido && body.pedido.id_pedido", "Pedido creado"),
+    }),
+    req("Cancelar pedido pendiente", "POST", "/api/tienda/pedidos/{{id_pedido_cancelar}}/cancelar", {
+      auth: "token_cliente",
+      tests: expectStatus(200),
+      description: "Solo mientras siga PENDIENTE de pago. Devuelve las prendas a stock y cancela en Stripe el cobro iniciado, si lo hay.",
+    }),
+    req("Mis devoluciones", "GET", "/api/tienda/devoluciones", {
+      auth: "token_cliente",
+      tests: expectStatus(200),
+      description: "Para solicitar: POST /api/tienda/devoluciones con { id_pedido, tipo, motivo, observacion?, detalles: [{ id_detalle_pedido, cantidad, id_producto_nuevo? }] } sobre un pedido ENTREGADO (ver GET /api/tienda/pedidos/:id/devolvible).",
+    }),
+  ],
+  "Endpoints de la tienda para clientes (app tienda/). Usan el token de cliente {{token_cliente}}, distinto del token de empleado.",
+);
+
+// ---------------------------------------------------------------------------
 
 const collection = {
   info: {
@@ -606,7 +685,7 @@ const collection = {
       "Colección importable en Postman con todos los endpoints reales del backend distribuidora-backend (Express + Sequelize + PostgreSQL), agrupados por módulo.\n\nRequiere el backend corriendo (`npm start`, puerto definido en .env.development, por defecto 8080). Ejecutar primero '0. Autenticación > Registro' y 'Login' - el token JWT se guarda automáticamente en la variable de colección `token` y las requests protegidas lo usan vía el header Authorization.",
     schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
   },
-  item: [auth, sucursales, clientes, proveedores, categorias, empleados, productos, inventario, pedidos, detallePedido, pagos, estadosPedido, reportes, devoluciones, auditoria, webhook],
+  item: [auth, sucursales, clientes, proveedores, categorias, empleados, productos, inventario, pedidos, detallePedido, pagos, estadosPedido, reportes, devoluciones, auditoria, webhook, tienda],
   variable: [
     { key: "baseUrl", value: "http://localhost:8080" },
     { key: "token", value: "" },
@@ -627,6 +706,10 @@ const collection = {
     { key: "id_pago", value: "1" },
     { key: "id_devolucion", value: "1" },
     { key: "id_detalle_devolucion", value: "1" },
+    { key: "token_cliente", value: "" },
+    { key: "cliente_email", value: "" },
+    { key: "id_pedido_tienda", value: "1" },
+    { key: "id_pedido_cancelar", value: "1" },
   ],
 };
 

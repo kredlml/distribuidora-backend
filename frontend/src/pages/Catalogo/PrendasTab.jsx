@@ -23,6 +23,7 @@ export default function PrendasTab({ cats, prods, reload }) {
       precio_unitario: Number(fd.get("precio_unitario")),
       stock_minimo: vacioANull(fd.get("stock_minimo")) === undefined ? undefined : Number(fd.get("stock_minimo")),
       id_producto_padre: fd.get("id_producto_padre") ? Number(fd.get("id_producto_padre")) : undefined,
+      imagen_url: vacioANull(fd.get("imagen_url")),
     });
     aviso(`Prenda #${r.id_producto} registrada.`);
     form.reset();
@@ -53,6 +54,7 @@ export default function PrendasTab({ cats, prods, reload }) {
           <Select className="field" name="id_producto_padre" placeholder="Ninguna, es una prenda base" options={bases.map((p) => [p.id_producto, `#${p.id_producto} ${prod(p)}`])} />
         </label>
         <label className="sm muted">Descripción (opcional)<textarea className="field" name="descripcion" maxLength={255} /></label>
+        <label className="sm muted">URL de la imagen (opcional, se muestra en la tienda en línea)<input className="field" name="imagen_url" type="url" maxLength={500} placeholder="https://..." /></label>
         <div className="err" role="alert">{error}</div>
         <div><button className="btn pri" disabled={enviando}>Registrar prenda</button></div>
       </form>

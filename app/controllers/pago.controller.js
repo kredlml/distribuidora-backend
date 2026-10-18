@@ -1,9 +1,9 @@
 const db = require("../models");
 const Pago = db.pago;
 const Pedido = db.pedido;
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { stripe, STRIPE_SIMULADO } = require("../config/stripe.config");
 const { registrarAuditoria } = require("../utils/auditoria");
-const { errorHttp, normalizarMonto, totalPagado, totalComprometido, procesarPedidoSiEstaPagado } = require("../utils/facturacion");
+const { errorHttp, normalizarMonto, totalPagado, totalComprometido, procesarPedidoSiEstaPagado, registrarCobroExitoso } = require("../utils/facturacion");
 
 exports.create = async (req, res) => {
 
@@ -44,7 +44,7 @@ exports.create = async (req, res) => {
 
     if (metodo_pago === 'STRIPE') {
       try {
-        if (process.env.STRIPE_SECRET_KEY === 'sk_test_clave_de_prueba_universidad') {
+        if (STRIPE_SIMULADO) {
            id_transaccion = 'pi_simulado_' + Math.floor(Math.random() * 1000000);
            estado_inicial = 'COMPLETADO';
         } else {
@@ -170,8 +170,23 @@ exports.anular = async (req, res) => {
       try {
         await stripe.paymentIntents.cancel(pago.id_transaccion_externa);
       } catch (stripeError) {
-        // Si Stripe no deja cancelarlo (p.ej. ya se cobró), el pago no se anula.
-        throw errorHttp(400, "Stripe no permitió cancelar el cobro: " + stripeError.message);
+        // Stripe no dejó cancelarlo: se consulta su estado real antes de decidir.
+        let pi;
+        try {
+          pi = await stripe.paymentIntents.retrieve(pago.id_transaccion_externa);
+        } catch (e) {
+          throw errorHttp(502, "No se pudo consultar el pago en Stripe: " + e.message);
+        }
+        if (pi.status === 'succeeded') {
+          // Ya se cobró: se registra el pago en lugar de anularlo.
+          await registrarCobroExitoso(pago, t);
+          await t.commit();
+          return res.status(409).send({ message: "Stripe ya cobró este pago; se registró como COMPLETADO en lugar de anularlo." });
+        }
+        if (pi.status !== 'canceled') {
+          throw errorHttp(400, "Stripe no permitió cancelar el cobro: " + stripeError.message);
+        }
+        // Ya estaba cancelado en Stripe: se anula también aquí.
       }
     }
 

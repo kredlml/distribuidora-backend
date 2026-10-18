@@ -1,0 +1,36 @@
+.pedido-fila { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center; color: inherit; text-decoration: none; padding: 16px 20px; }
+.pedido-fila:hover { box-shadow: var(--sh-lg); }
+.fotos { display: flex; }
+.fotos .img { width: 44px; aspect-ratio: 4 / 5; border-radius: 10px; border: 2px solid var(--white); margin-left: -12px; }
+.fotos .img:first-child { margin-left: 0; }
+.pedido-info { display: grid; gap: 2px; min-width: 0; }
+.pedido-der { display: grid; gap: 6px; justify-items: end; }
+
+.pasos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.pasos li { display: grid; gap: 8px; justify-items: center; text-align: center; font-size: 13px; color: var(--muted); position: relative; }
+.pasos li::before { content: ""; position: absolute; top: 7px; left: calc(-50% + 10px); right: calc(50% + 10px); height: 2px; background: var(--border); }
+.pasos li:first-child::before { display: none; }
+.pasos .punto { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); background: var(--white); z-index: 1; }
+.pasos li.hecho, .pasos li.actual { color: var(--ink); }
+.pasos li.hecho .punto { background: var(--ink); border-color: var(--ink); }
+.pasos li.hecho::before, .pasos li.actual::before { background: var(--ink); }
+.pasos li.actual .punto { border-color: var(--violet); background: var(--violet); box-shadow: 0 0 0 4px var(--violet-wash); }
+
+.pagar-card { display: grid; gap: 8px; }
+.pagar-card p { margin: 0; }
+.pago { display: grid; gap: 10px; max-width: 460px; }
+.pago p { margin: 0; }
+.tarjeta { border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; background: var(--white); }
+
+.cols-pedido { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.linea-pedido { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--border); }
+.linea-pedido:first-of-type { border-top: 0; }
+.linea-pedido .mini-foto { width: 56px; aspect-ratio: 4 / 5; border-radius: 12px; overflow: hidden; display: block; background: var(--canvas); }
+.linea-pedido .mini-foto .img { width: 100%; height: 100%; }
+a.fila { color: inherit; text-decoration: none; padding: 6px 0; align-items: center; }
+
+@media (max-width: 860px) {
+  .cols-pedido { grid-template-columns: 1fr; }
+  .pedido-fila { grid-template-columns: minmax(0, 1fr) auto; }
+  .fotos { display: none; }
+}

@@ -6,11 +6,14 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const app = express();
+// Detrás del proxy de Render (un salto) req.ip debe ser la IP real del cliente, no la del proxy:
+// la usa el límite de intentos de login/registro.
+app.set("trust proxy", 1);
 
-// Orígenes permitidos para el frontend. Se pueden definir varios separados por coma en
-// la variable de entorno CORS_ORIGIN; si no existe se conserva el valor original.
+// Orígenes permitidos: panel de empleados (frontend/, puerto 8081) y tienda en línea
+// (tienda/, puerto 8082). Se pueden definir varios separados por coma en CORS_ORIGIN.
 var corsOptions = {
-  origin: (process.env.CORS_ORIGIN || "http://localhost:8081").split(",").map(o => o.trim())
+  origin: (process.env.CORS_ORIGIN || "http://localhost:8081,http://localhost:8082").split(",").map(o => o.trim())
 };
 app.use(cors(corsOptions));
 
@@ -46,6 +49,7 @@ require("./app/routes/reporte.routes")(app);
 require("./app/routes/auth.routes")(app);
 require("./app/routes/devolucion.routes")(app);
 require("./app/routes/auditoria.routes")(app);
+require("./app/routes/tienda.routes")(app);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {

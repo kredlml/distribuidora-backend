@@ -1,34 +1,8 @@
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { stripe } = require("../config/stripe.config");
 const db = require("../models");
 const Pago = db.pago;
-const Pedido = db.pedido;
 const { registrarAuditoria } = require("../utils/auditoria");
-const { totalPagado, procesarPedidoSiEstaPagado } = require("../utils/facturacion");
-
-// payment_intent.succeeded: el dinero ya entró. Si el pedido sigue PENDIENTE y el monto
-// cabe en el saldo, el pago cuenta y el pedido puede pasar a PROCESADO; si no (pedido
-// cancelado/ya pagado o cobro de más), se registra igual pero queda marcado para reembolso.
-async function cobroExitoso(pago, t) {
-  const pedido = await Pedido.findByPk(pago.id_pedido, { transaction: t, lock: t.LOCK.UPDATE });
-  const saldo = pedido ? Math.round((Number(pedido.total) - await totalPagado(pedido.id_pedido, t)) * 100) / 100 : 0;
-
-  pago.estado_pago = 'COMPLETADO';
-  await pago.save({ transaction: t });
-
-  if (!pedido || pedido.estado !== 'PENDIENTE' || Number(pago.monto) > saldo) {
-    await registrarAuditoria({
-      id_empleado: null,
-      accion: 'PAGO_REQUIERE_REEMBOLSO',
-      tabla_afectada: 'Pago',
-      registro_afectado_id: pago.id_pago,
-      detalles: `Stripe cobró ${Number(pago.monto).toFixed(2)} (pago #${pago.id_pago}) pero el pedido #${pago.id_pedido} ${pedido ? `está ${pedido.estado} con saldo ${saldo.toFixed(2)}` : 'no existe'}; debe reembolsarse.`
-    }, t);
-    console.warn(`Webhook: el pago #${pago.id_pago} se cobró pero requiere reembolso.`);
-    return;
-  }
-
-  await procesarPedidoSiEstaPagado(pago.id_pedido, null, t);
-}
+const { registrarCobroExitoso } = require("../utils/facturacion");
 
 exports.stripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -63,7 +37,7 @@ exports.stripeWebhook = async (req, res) => {
         console.log(`¡Éxito! Stripe confirma que el banco cobró: ${paymentIntent.id}`);
         // También FALLIDO: un pago anterior a este cambio pudo quedar así tras un intento rechazado.
         if (pago.estado_pago === 'PENDIENTE' || pago.estado_pago === 'FALLIDO') {
-          await cobroExitoso(pago, t);
+          await registrarCobroExitoso(pago, t);
         }
       } else if (event.type === 'payment_intent.payment_failed') {
         // No es definitivo: el cliente puede reintentar con otra tarjeta sobre el mismo

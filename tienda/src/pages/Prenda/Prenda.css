@@ -1,0 +1,14 @@
+.ficha { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.ficha-foto { border-radius: 28px; overflow: hidden; aspect-ratio: 4 / 5; background: var(--white); box-shadow: var(--sh-card); }
+.ficha-foto .img { width: 100%; height: 100%; }
+.ficha-info { display: grid; gap: 14px; align-content: start; }
+.ficha-info h1 { font-size: 28px; }
+.ficha-info p { margin: 0; }
+.precio-g { font-size: 22px; }
+.opcion { display: grid; gap: 8px; }
+.opcion .chips { margin: 0; }
+.chip.sin { color: var(--muted); text-decoration: line-through; }
+
+@media (max-width: 760px) {
+  .ficha { grid-template-columns: 1fr; gap: 20px; }
+}

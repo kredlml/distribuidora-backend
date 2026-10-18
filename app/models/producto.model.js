@@ -14,7 +14,9 @@ module.exports = (sequelize, Sequelize) => {
     id_categoria: { type: Sequelize.INTEGER },
     // Agrupa variantes (talla/color) de una misma prenda. Si es NULL, el producto
     // es "base" o no forma parte de un grupo de variantes. Usado para cambios de talla.
-    id_producto_padre: { type: Sequelize.INTEGER, allowNull: true }
+    id_producto_padre: { type: Sequelize.INTEGER, allowNull: true },
+    // Foto que muestra la tienda en línea (URL http/https). Opcional.
+    imagen_url: { type: Sequelize.STRING(500), allowNull: true }
   }, {
     tableName: 'Producto',
     timestamps: false

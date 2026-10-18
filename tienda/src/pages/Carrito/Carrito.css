@@ -1,0 +1,17 @@
+.cols-carrito { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.linea { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--border); }
+.linea:first-child { border-top: 0; padding-top: 0; }
+.linea-info { display: grid; gap: 2px; min-width: 0; }
+.linea-info .nombre { color: inherit; text-decoration: none; }
+.linea-ctl { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.resumen { display: grid; gap: 10px; position: sticky; top: calc(88px + env(safe-area-inset-top, 0px)); }
+.resumen h2 { margin: 0; }
+.resumen p { margin: 0; }
+.ancho { width: 100%; }
+
+@media (max-width: 860px) {
+  .cols-carrito { grid-template-columns: 1fr; }
+  .resumen { position: static; }
+  .linea { grid-template-columns: 64px minmax(0, 1fr); }
+  .linea-ctl { grid-column: 1 / -1; justify-content: space-between; }
+}

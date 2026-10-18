@@ -10,7 +10,9 @@ module.exports = (sequelize, Sequelize) => {
     total: { type: Sequelize.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
     id_cliente: { type: Sequelize.INTEGER, allowNull: false },
     id_sucursal: { type: Sequelize.INTEGER, allowNull: false },
-    id_empleado: { type: Sequelize.INTEGER }
+    id_empleado: { type: Sequelize.INTEGER },
+    // Dirección a la que se despacha (pedidos de la tienda en línea). NULL en ventas de mostrador.
+    direccion_entrega: { type: Sequelize.STRING(200), allowNull: true }
   }, {
     tableName: 'Pedido',
     timestamps: false

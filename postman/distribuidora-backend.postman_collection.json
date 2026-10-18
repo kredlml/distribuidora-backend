@@ -297,6 +297,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
               }
             ],
             "body": {
@@ -322,15 +326,22 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"No expone contraseñas\", () => pm.expect(pm.response.json().every(c => !(\"password\" in c))).to.be.true);"
                 ]
               }
             }
           ],
           "request": {
             "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/clientes"
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/clientes",
+            "description": "Requiere estar autenticado como empleado (datos personales). Alta en mostrador: CAJERO o ADMIN."
           },
           "response": []
         }
@@ -1977,6 +1988,438 @@
           "response": []
         }
       ]
+    },
+    {
+      "id": "distribuidora-87",
+      "name": "16. Tienda en línea (cliente)",
+      "description": "Endpoints de la tienda para clientes (app tienda/). Usan el token de cliente {{token_cliente}}, distinto del token de empleado.",
+      "item": [
+        {
+          "id": "distribuidora-73",
+          "name": "Registro de cliente",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"cliente_email\", `cliente.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Sesión de cliente\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "if (body.token) pm.collectionVariables.set(\"token_cliente\", body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Lucia\",\n  \"apellido\": \"Mendez\",\n  \"email\": \"{{cliente_email}}\",\n  \"password\": \"Cliente123\",\n  \"telefono\": \"55551234\",\n  \"direccion\": \"Zona 15, Guatemala\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/auth/registro",
+            "description": "Cuenta de la tienda (contraseña mínimo 8). Devuelve un token de tipo CLIENTE que se guarda en token_cliente."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-74",
+          "name": "Login de cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Sesión de cliente\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "if (body.token) pm.collectionVariables.set(\"token_cliente\", body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{cliente_email}}\",\n  \"password\": \"Cliente123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/auth/login"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-75",
+          "name": "Token de cliente en el panel (rechazado)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 esperado: un token de cliente no da acceso al panel de empleados\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-76",
+          "name": "Catálogo (público)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/tienda/catalogo?id_sucursal={{id_sucursal}}",
+            "description": "Prendas agrupadas (producto base + variantes de talla/color) con stock DISPONIBLE en la sucursal indicada. Filtros opcionales: q, id_categoria."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-77",
+          "name": "Detalle de prenda (público)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/tienda/catalogo/{{id_producto}}",
+            "description": "Acepta el id de cualquier variante; devuelve el grupo con stock por sucursal."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-78",
+          "name": "Perfil del cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tienda/perfil"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-79",
+          "name": "Crear pedido (checkout)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Pedido de la tienda creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.pedido && body.pedido.id_pedido;",
+                  "if (value) pm.collectionVariables.set(\"id_pedido_tienda\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"direccion_entrega\": \"Zona 15, Guatemala\",\n  \"detalles\": [\n    {\n      \"id_producto\": \"{{id_producto}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/pedidos",
+            "description": "El cliente sale del token. Nace PENDIENTE de pago con el total calculado por los hooks. Maximo 3 pedidos pendientes por cliente y 20 unidades por prenda."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-80",
+          "name": "Mis pedidos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tienda/pedidos"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-81",
+          "name": "Detalle de mi pedido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tienda/pedidos/{{id_pedido_tienda}}"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-82",
+          "name": "Iniciar pago con tarjeta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Pago iniciado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tienda/pedidos/{{id_pedido_tienda}}/pago",
+            "description": "Con una clave real de Stripe (sk_test_) crea un PaymentIntent y devuelve client_secret para confirmar la tarjeta con Stripe.js desde la tienda; repetirlo retoma el mismo PaymentIntent. Con la clave simulada el pago se completa al instante y el pedido pasa a PROCESADO."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-83",
+          "name": "Sincronizar pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tienda/pedidos/{{id_pedido_tienda}}/pago/confirmar",
+            "description": "Consulta el PaymentIntent en Stripe y, si ya se cobro, registra el pago sin esperar al webhook. Desde Postman (sin tarjeta) el pedido sigue PENDIENTE con una clave real."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-84",
+          "name": "Crear pedido para cancelar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Pedido creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.pedido && body.pedido.id_pedido;",
+                  "if (value) pm.collectionVariables.set(\"id_pedido_cancelar\", value);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"detalles\": [\n    {\n      \"id_producto\": \"{{id_producto}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/pedidos"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-85",
+          "name": "Cancelar pedido pendiente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tienda/pedidos/{{id_pedido_cancelar}}/cancelar",
+            "description": "Solo mientras siga PENDIENTE de pago. Devuelve las prendas a stock y cancela en Stripe el cobro iniciado, si lo hay."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-86",
+          "name": "Mis devoluciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tienda/devoluciones",
+            "description": "Para solicitar: POST /api/tienda/devoluciones con { id_pedido, tipo, motivo, observacion?, detalles: [{ id_detalle_pedido, cantidad, id_producto_nuevo? }] } sobre un pedido ENTREGADO (ver GET /api/tienda/pedidos/:id/devolvible)."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -2054,6 +2497,22 @@
     },
     {
       "key": "id_detalle_devolucion",
+      "value": "1"
+    },
+    {
+      "key": "token_cliente",
+      "value": ""
+    },
+    {
+      "key": "cliente_email",
+      "value": ""
+    },
+    {
+      "key": "id_pedido_tienda",
+      "value": "1"
+    },
+    {
+      "key": "id_pedido_cancelar",
       "value": "1"
     }
   ]

@@ -6,19 +6,12 @@ const Sucursal = db.sucursal;
 const Producto = db.producto;
 const Pago = db.pago;
 const { registrarAuditoria } = require("../utils/auditoria");
-const {
-  errorHttp,
-  validarCantidad,
-  obtenerProductoVendible,
-  descontarStockVenta,
-  reintegrarStockVenta,
-  totalPagado
-} = require("../utils/facturacion");
+const { errorHttp, totalPagado, crearPedido, cancelarPedido } = require("../utils/facturacion");
 
 const ESTADOS_PEDIDO_VALIDOS = ['PENDIENTE', 'PROCESADO', 'ENVIADO', 'ENTREGADO', 'CANCELADO'];
 
-// POST /api/pedidos — registra una venta.
-// Body: { id_cliente, id_sucursal, detalles: [{ id_producto, cantidad }] }
+// POST /api/pedidos — registra una venta de mostrador.
+// Body: { id_cliente, id_sucursal, detalles: [{ id_producto, cantidad }], direccion_entrega? }
 // (también acepta una sola línea con id_producto/cantidad en la raíz del body).
 // Todo pedido nace PENDIENTE de pago; el precio sale del catálogo y el total lo
 // calculan los hooks de DetallePedido, por eso se ignoran estado/total/precio del body.
@@ -28,73 +21,16 @@ exports.create = async (req, res) => {
 
   try {
     const body = req.body || {};
-    const { id_cliente, id_sucursal } = body;
     const lineasRecibidas = Array.isArray(body.detalles) && body.detalles.length > 0
       ? body.detalles
       : [{ id_producto: body.id_producto, cantidad: body.cantidad }];
 
-    if (!id_cliente || !id_sucursal || lineasRecibidas.some(l => !l || !l.id_producto || !l.cantidad)) {
-      throw errorHttp(400, "Faltan datos obligatorios para procesar la venta.");
-    }
-
-    // Una línea por producto (se suman las repetidas) y en orden de id_producto: así todas
-    // las ventas bloquean el inventario en el mismo orden y no se producen deadlocks.
-    const porProducto = new Map();
-    for (const l of lineasRecibidas) {
-      const id = Number(l.id_producto);
-      porProducto.set(id, (porProducto.get(id) || 0) + validarCantidad(l.cantidad));
-    }
-    const lineas = [...porProducto.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([id_producto, cantidad]) => ({ id_producto, cantidad }));
-    const cantidades = lineas.map(l => l.cantidad);
-
-    const cliente = await Cliente.findByPk(id_cliente, { transaction: t });
-    if (!cliente || !cliente.activo) {
-      throw errorHttp(400, `El cliente ${id_cliente} no existe o está inactivo.`);
-    }
-    const sucursal = await Sucursal.findByPk(id_sucursal, { transaction: t });
-    if (!sucursal || !sucursal.activo) {
-      throw errorHttp(400, `La sucursal ${id_sucursal} no existe o está inactiva.`);
-    }
-
-    const pedidoCreado = await Pedido.create({
-      estado: 'PENDIENTE',
-      total: 0,
-      id_cliente,
-      id_sucursal,
-      id_empleado: req.empleadoId
-    }, { transaction: t });
-
-    for (let i = 0; i < lineas.length; i++) {
-      const producto = await obtenerProductoVendible(lineas[i].id_producto, t);
-
-      await descontarStockVenta({
-        id_producto: producto.id_producto,
-        id_sucursal,
-        cantidad: cantidades[i],
-        id_pedido: pedidoCreado.id_pedido,
-        id_empleado: req.empleadoId
-      }, t);
-
-      // subtotal y Pedido.total los calculan los hooks del modelo DetallePedido.
-      await DetallePedido.create({
-        cantidad: cantidades[i],
-        precio_unitario: producto.precio_unitario,
-        id_pedido: pedidoCreado.id_pedido,
-        id_producto: producto.id_producto
-      }, { transaction: t });
-    }
-
-    // El hook actualizó la fila en BD; se recarga para responder con el total real.
-    await pedidoCreado.reload({ transaction: t });
-
-    await registrarAuditoria({
+    const pedidoCreado = await crearPedido({
+      id_cliente: body.id_cliente,
+      id_sucursal: body.id_sucursal,
+      lineasRecibidas,
       id_empleado: req.empleadoId,
-      accion: 'PEDIDO_CREADO',
-      tabla_afectada: 'Pedido',
-      registro_afectado_id: pedidoCreado.id_pedido,
-      detalles: `Pedido #${pedidoCreado.id_pedido} creado con ${lineas.length} línea(s) por un total de ${Number(pedidoCreado.total).toFixed(2)}.`
+      direccion_entrega: typeof body.direccion_entrega === 'string' ? body.direccion_entrega.trim().slice(0, 200) : null
     }, t);
 
     await t.commit();
@@ -282,35 +218,14 @@ exports.actualizarEstado = async (req, res) => {
       }
     }
 
-    // PENDIENTE -> CANCELADO: las unidades vendidas vuelven a stock DISPONIBLE.
-    if (estado === 'CANCELADO') {
-      if (await totalPagado(pedido.id_pedido, t) > 0) {
-        throw errorHttp(400, "El pedido tiene pagos completados y no puede cancelarse sin gestionar antes el reembolso.");
-      }
-      // Un pago PENDIENTE (p.ej. Stripe) podría confirmarse después de cancelar: se exige anularlo antes.
-      if (await totalPagado(pedido.id_pedido, t, ['PENDIENTE']) > 0) {
-        throw errorHttp(400, "El pedido tiene pagos PENDIENTES; anúlelos (PUT /api/pagos/:id/anular) antes de cancelarlo.");
-      }
-      const detalles = await DetallePedido.findAll({
-        where: { id_pedido: pedido.id_pedido },
-        order: [['id_producto', 'ASC']], // mismo orden de bloqueo de inventario que las ventas
-        transaction: t
-      });
-      for (const detalle of detalles) {
-        await reintegrarStockVenta({
-          id_producto: detalle.id_producto,
-          id_sucursal: pedido.id_sucursal,
-          cantidad: detalle.cantidad,
-          id_pedido: pedido.id_pedido,
-          id_empleado: req.empleadoId,
-          observacion: `Pedido #${pedido.id_pedido} cancelado; unidades devueltas a stock.`
-        }, t);
-      }
-    }
-
     const estadoAnterior = pedido.estado;
-    pedido.estado = estado;
-    await pedido.save({ transaction: t });
+    if (estado === 'CANCELADO') {
+      // PENDIENTE -> CANCELADO: sin pagos completados ni pendientes; el stock vuelve a DISPONIBLE.
+      await cancelarPedido(pedido, { id_empleado: req.empleadoId }, t);
+    } else {
+      pedido.estado = estado;
+      await pedido.save({ transaction: t });
+    }
 
     await registrarAuditoria({
       id_empleado: req.empleadoId,

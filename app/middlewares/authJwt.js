@@ -18,9 +18,40 @@ exports.verificarToken = (req, res, next) => {
     if (err) {
       return res.status(401).send({ message: "¡Token no autorizado o expirado!" });
     }
-    
+    // Los tokens de la tienda en línea (clientes) no dan acceso al panel de empleados.
+    if (decoded.tipo === "CLIENTE" || !decoded.id) {
+      return res.status(403).send({ message: "¡Acceso denegado! Este token no pertenece a un empleado." });
+    }
+
     req.empleadoId = decoded.id;
-    next(); 
+    next();
+  });
+};
+
+// Rutas de la tienda en línea: exige un token de cliente (tipo CLIENTE) de una cuenta activa.
+exports.verificarCliente = (req, res, next) => {
+  const tokenHeader = req.headers["authorization"];
+  if (!tokenHeader) {
+    return res.status(403).send({ message: "¡No se proporcionó un token de seguridad!" });
+  }
+
+  jwt.verify(tokenHeader.split(" ")[1], process.env.JWT_SECRET, async (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "¡Token no autorizado o expirado!" });
+    }
+    if (decoded.tipo !== "CLIENTE" || !decoded.id_cliente) {
+      return res.status(403).send({ message: "¡Acceso denegado! Este token no pertenece a un cliente de la tienda." });
+    }
+    try {
+      const cliente = await db.cliente.findByPk(decoded.id_cliente);
+      if (!cliente || !cliente.activo) {
+        return res.status(401).send({ message: "¡Token no autorizado! La cuenta no existe o está desactivada." });
+      }
+      req.clienteId = cliente.id_cliente;
+      next();
+    } catch (error) {
+      res.status(500).send({ message: "Error al validar la sesión del cliente." });
+    }
   });
 };
 

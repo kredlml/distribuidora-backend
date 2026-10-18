@@ -2,8 +2,26 @@ const db = require("../models");
 const Producto = db.producto;
 const { registrarAuditoria } = require("../utils/auditoria");
 
+// imagen_url: vacío/null = sin imagen; si viene, debe ser una URL http(s) de hasta 500 caracteres.
+// Devuelve { valor } o { error }.
+function validarImagenUrl(v) {
+  if (v === undefined) return {};
+  if (v === null || String(v).trim() === "") return { valor: null };
+  const s = String(v).trim();
+  let url;
+  try { url = new URL(s); } catch { return { error: "La URL de la imagen no es válida." }; }
+  if (!["http:", "https:"].includes(url.protocol)) return { error: "La URL de la imagen debe empezar con http:// o https://." };
+  if (s.length > 500) return { error: "La URL de la imagen no puede superar los 500 caracteres." };
+  return { valor: s };
+}
+
 exports.create = async (req, res) => {
   try {
+    req.body = req.body || {};
+    const imagen = validarImagenUrl(req.body.imagen_url);
+    if (imagen.error) {
+      return res.status(400).send({ message: imagen.error });
+    }
     // Validar campos obligatorios (incluyendo la llave foránea de categoría)
     if (!req.body.nombre || !req.body.precio_unitario || !req.body.id_categoria) {
       return res.status(400).send({ message: "El nombre, precio unitario y id_categoria son obligatorios." });
@@ -36,7 +54,8 @@ exports.create = async (req, res) => {
       id_categoria: req.body.id_categoria,
       stock_minimo: req.body.stock_minimo,
       activo: req.body.activo !== undefined ? req.body.activo : true,
-      id_producto_padre: id_producto_padre
+      id_producto_padre: id_producto_padre,
+      imagen_url: imagen.valor ?? null
     };
 
     const data = await Producto.create(nuevoProducto);
@@ -117,6 +136,9 @@ exports.update = async (req, res) => {
       if (typeof b.activo !== "boolean") return mal("El campo activo debe ser verdadero o falso.");
       cambios.activo = b.activo;
     }
+    const imagen = validarImagenUrl(b.imagen_url);
+    if (imagen.error) return mal(imagen.error);
+    if (imagen.valor !== undefined) cambios.imagen_url = imagen.valor;
     if (b.id_producto_padre !== undefined) {
       if (b.id_producto_padre === null || b.id_producto_padre === "") {
         cambios.id_producto_padre = null; // deja de ser variante

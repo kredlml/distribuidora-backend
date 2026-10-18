@@ -15,6 +15,7 @@ export default function EditarPrendaDialog({ prenda: p, cats, prods, onClose, on
       nombre: fd.get("nombre").trim(), id_categoria: Number(fd.get("id_categoria")),
       talla: vacioANull(fd.get("talla")) ?? null, color: vacioANull(fd.get("color")) ?? null, descripcion: vacioANull(fd.get("descripcion")) ?? null,
       precio_unitario: Number(fd.get("precio_unitario")), stock_minimo: Number(fd.get("stock_minimo")), activo: fd.get("activo") === "on",
+      imagen_url: vacioANull(fd.get("imagen_url")) ?? null,
     };
     if (!tieneVar) body.id_producto_padre = fd.get("id_producto_padre") ? Number(fd.get("id_producto_padre")) : null;
     await productosService.actualizar(p.id_producto, body);
@@ -44,6 +45,8 @@ export default function EditarPrendaDialog({ prenda: p, cats, prods, onClose, on
         </label>
         {tieneVar && <div className="muted sm">Esta prenda tiene variantes, por eso no puede ser variante de otra.</div>}
         <label className="sm muted">Descripción<textarea className="field" name="descripcion" maxLength={255} defaultValue={p.descripcion || ""} /></label>
+        <label className="sm muted">URL de la imagen (tienda en línea)<input className="field" name="imagen_url" type="url" maxLength={500} placeholder="https://..." defaultValue={p.imagen_url || ""} /></label>
+        {p.imagen_url && <img src={p.imagen_url} alt="" style={{ maxHeight: 120, borderRadius: 16, objectFit: "cover" }} />}
         <label className="chk"><input type="checkbox" name="activo" defaultChecked={!!p.activo} /><span>Prenda activa (se puede vender y usar en cambios)</span></label>
         <div className="err" role="alert">{error}</div>
         <div className="acts">

@@ -1,0 +1,10 @@
+@import "../Pedidos/Pedidos.css";
+
+.radios-col { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.radios-col legend { margin-bottom: 8px; }
+.linea-dev { display: grid; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+.linea-dev-info { display: flex; gap: 12px; align-items: center; }
+.linea-dev-info .img.mini { width: 48px; aspect-ratio: 4 / 5; border-radius: 10px; flex: none; }
+.linea-dev .ctl { padding-left: 30px; }
+.linea-dev .ctl label { display: grid; gap: 4px; }
+.sin-fotos { grid-template-columns: minmax(0, 1fr) auto; }

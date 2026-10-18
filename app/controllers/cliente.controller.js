@@ -3,6 +3,7 @@ const Cliente = db.cliente;
 
 exports.create = async (req, res) => {
   try {
+    req.body = req.body || {};
     if (!req.body.nombre || !req.body.apellido) {
       return res.status(400).send({ message: "El nombre y apellido son obligatorios." });
     }
@@ -23,6 +24,7 @@ exports.create = async (req, res) => {
 
 exports.findAll = async (req, res) => {
   try {
+    // El defaultScope del modelo excluye el hash de contraseña de la tienda.
     const data = await Cliente.findAll();
     res.send(data);
   } catch (error) {
