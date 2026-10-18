@@ -1,6 +1,9 @@
 const jwt = require("jsonwebtoken");
 const db = require("../models");
-const Empleado = db.empleado; 
+const Empleado = db.empleado;
+
+// Puestos que reconocen los controles de rol (isAdmin, isCajero, isBodeguero).
+exports.PUESTOS_VALIDOS = ["ADMIN", "CAJERO", "BODEGUERO"];
 
 exports.verificarToken = (req, res, next) => {
   let tokenHeader = req.headers["authorization"];
@@ -33,6 +36,21 @@ exports.isAdmin = async (req, res, next) => {
   } catch (error) {
     res.status(500).send({ message: "Error al validar el rol de usuario." });
   }
+};
+
+
+// Registro de empleados: con la base vacía, el primer empleado puede registrarse sin token
+// (queda como ADMIN, ver auth.controller). A partir de ahí solo un ADMIN autenticado registra.
+exports.permitirRegistro = async (req, res, next) => {
+  try {
+    if (await Empleado.count() === 0) {
+      req.registroInicial = true;
+      return next();
+    }
+  } catch (error) {
+    return res.status(500).send({ message: "Error al validar el registro." });
+  }
+  exports.verificarToken(req, res, () => exports.isAdmin(req, res, next));
 };
 
 

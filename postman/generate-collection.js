@@ -122,28 +122,29 @@ if (body.id) pm.collectionVariables.set("id_empleado", body.id);
 const auth = folder(
   "0. Autenticación",
   [
-    req("Registro de empleado", "POST", "/api/auth/registro", {
-      prerequest: 'pm.collectionVariables.set("empleado_email", `juan.perez.${Date.now()}@example.com`);',
+    req("Registro inicial (primer ADMIN)", "POST", "/api/auth/registro", {
       body: {
-        nombre: "Juan",
-        apellido: "Perez",
-        puesto: "ADMIN",
-        email: "{{empleado_email}}",
-        password: "Password123",
-        id_sucursal: "{{id_sucursal}}",
+        nombre: "Admin",
+        apellido: "Principal",
+        email: "{{admin_email}}",
+        password: "{{admin_password}}",
       },
-      tests: expectStatus(201, "Empleado registrado"),
+      tests: `pm.test("201 con la BD sin empleados; 403 si ya existen (se usa el ADMIN existente)", () => pm.expect(pm.response.code).to.be.oneOf([201, 403]));`,
       description:
-        "Crea un empleado. El puesto determina los permisos (ADMIN, CAJERO, BODEGUERO). El email se genera dinamicamente (empleado_email) para poder correr la coleccion varias veces sin chocar con el email de una corrida anterior (email es unico a nivel de base de datos aunque el modelo Empleado no lo declare explicitamente).",
+        "Solo funciona con la base de datos SIN empleados: ese primer empleado queda siempre como ADMIN (ignora el puesto). Si ya hay empleados responde 403: en ese caso pon en las variables de coleccion admin_email/admin_password las credenciales de un ADMIN existente.",
     }),
     req("Login", "POST", "/api/auth/login", {
-      body: { email: "{{empleado_email}}", password: "Password123" },
+      body: { email: "{{admin_email}}", password: "{{admin_password}}" },
       tests: CAPTURE_LOGIN,
       description:
-        "Guarda el JWT en la variable de coleccion `token`, usado por el resto de requests protegidas. Depende de haber corrido 'Registro de empleado' antes en la misma ejecucion (usa el email generado ahi).",
+        "Guarda el JWT del ADMIN en la variable de coleccion `token`, usado por el resto de requests protegidas.",
+    }),
+    req("Registro sin token (rechazado)", "POST", "/api/auth/registro", {
+      body: { nombre: "Intruso", apellido: "X", puesto: "ADMIN", email: "intruso.{{$timestamp}}@example.com", password: "Password123" },
+      tests: expectStatus(403, "403 esperado: con empleados ya registrados solo un ADMIN autenticado puede registrar"),
     }),
   ],
-  "Ejecutar Registro y Login antes que cualquier request marcada como protegida (usa el header Authorization: Bearer {{token}}).",
+  "Ejecutar Registro inicial y Login antes que cualquier request marcada como protegida (usa el header Authorization: Bearer {{token}}). Registrar empleados requiere un ADMIN (ver folder 5).",
 );
 
 // ---------------------------------------------------------------------------
@@ -152,15 +153,24 @@ const auth = folder(
 
 const sucursales = folder("1. Sucursales", [
   req("Crear sucursal", "POST", "/api/sucursales", {
+    auth: true,
     body: { nombre: "Sucursal Centro", direccion: "5ta avenida 10-20", ciudad: "Guatemala", telefono: "22334455", activo: true },
     tests: captureId("id_sucursal", "body.id_sucursal", "Sucursal creada"),
+    description: "Requiere rol ADMIN.",
   }),
   req("Listar sucursales", "GET", "/api/sucursales", {
     tests: expectStatus(200),
+    description: "Publico (lo usan el frontend y la tienda).",
   }),
   req("Actualizar sucursal", "PUT", "/api/sucursales/{{id_sucursal}}", {
+    auth: true,
     body: { telefono: "22339999", activo: true },
     tests: expectStatus(200),
+    description: "Requiere rol ADMIN. Solo aplica nombre, direccion, ciudad, telefono y activo (boolean); cualquier otro campo se ignora.",
+  }),
+  req("Actualizar sucursal sin token (rechazado)", "PUT", "/api/sucursales/{{id_sucursal}}", {
+    body: { activo: false },
+    tests: expectStatus(403, "403 esperado: modificar sucursales requiere un ADMIN autenticado"),
   }),
 ]);
 
@@ -199,6 +209,7 @@ const proveedores = folder("3. Proveedores", [
 
 const categorias = folder("4. Categorías", [
   req("Crear categoria", "POST", "/api/categorias", {
+    auth: true,
     body: { nombre: "Camisas-{{$timestamp}}", descripcion: "Camisas de vestir y casuales" },
     tests: captureId("id_categoria", "body.id_categoria", "Categoria creada"),
     description: "nombre con {{$timestamp}} porque Categoria.nombre es unique en el modelo (app/models/categoria.model.js) - un valor fijo solo funciona la primera vez que se corre la coleccion.",
@@ -213,7 +224,14 @@ const categorias = folder("4. Categorías", [
 // ---------------------------------------------------------------------------
 
 const empleados = folder("5. Empleados", [
+  req("Registrar cajero (requiere ADMIN)", "POST", "/api/auth/registro", {
+    auth: true,
+    body: { nombre: "Carla", apellido: "Cajera", puesto: "CAJERO", email: "carla.cajera.{{$timestamp}}@example.com", password: "Password123", id_sucursal: "{{id_sucursal}}" },
+    tests: expectStatus(201, "Cajero registrado por el ADMIN"),
+    description: "Registro de empleados con contraseña (pueden iniciar sesion). Requiere token de ADMIN. puesto debe ser ADMIN, CAJERO o BODEGUERO.",
+  }),
   req("Crear empleado", "POST", "/api/empleados", {
+    auth: true,
     body: {
       nombre: "Ana",
       apellido: "Gomez",
@@ -224,11 +242,14 @@ const empleados = folder("5. Empleados", [
       id_sucursal: "{{id_sucursal}}",
       activo: true,
     },
-    tests: captureId("id_empleado", "body.id_empleado", "Empleado creado"),
-    description: "email con {{$timestamp}} porque la columna email de Empleado es unica en la base de datos (aunque el modelo Sequelize no lo declare) - un valor fijo solo funciona la primera vez que se corre la coleccion.",
+    tests: expectStatus(201, "Empleado creado"),
+    description: "Requiere rol ADMIN. Ficha de empleado sin contraseña (no puede iniciar sesion; para eso usar 'Registrar cajero'). email con {{$timestamp}} porque la columna email de Empleado es unica en la base de datos (aunque el modelo Sequelize no lo declare) - un valor fijo solo funciona la primera vez que se corre la coleccion.",
   }),
   req("Listar empleados", "GET", "/api/empleados", {
-    tests: expectStatus(200),
+    auth: true,
+    tests: `${expectStatus(200)}
+pm.test("No expone contraseñas", () => pm.expect(pm.response.json().every(e => !("password" in e))).to.be.true);`,
+    description: "Requiere estar autenticado. Nunca devuelve el hash de la contraseña.",
   }),
 ]);
 
@@ -238,6 +259,7 @@ const empleados = folder("5. Empleados", [
 
 const productos = folder("6. Productos", [
   req("Crear producto", "POST", "/api/productos", {
+    auth: true,
     body: {
       nombre: "Camisa Manga Larga",
       descripcion: "Camisa de algodon",
@@ -249,6 +271,23 @@ const productos = folder("6. Productos", [
       activo: true,
     },
     tests: captureId("id_producto", "body.id_producto", "Producto creado"),
+    description: "Requiere rol BODEGUERO o ADMIN.",
+  }),
+  req("Crear variante (talla L)", "POST", "/api/productos", {
+    auth: true,
+    body: {
+      nombre: "Camisa Manga Larga",
+      descripcion: "Camisa de algodon",
+      talla: "L",
+      color: "Azul",
+      precio_unitario: 150.0,
+      id_categoria: "{{id_categoria}}",
+      stock_minimo: 5,
+      activo: true,
+      id_producto_padre: rawVar("id_producto"),
+    },
+    tests: captureId("id_producto_nuevo", "body.id_producto", "Variante creada"),
+    description: "Variante del producto anterior (mismo grupo por id_producto_padre). La usa 'Crear solicitud de cambio de talla/variante' como id_producto_nuevo.",
   }),
   req("Listar productos", "GET", "/api/productos", {
     tests: expectStatus(200),
@@ -271,6 +310,12 @@ const inventario = folder("7. Inventario", [
     tests: captureId("id_inventario", "body.id_inventario", "Inventario registrado"),
     description: "Requiere rol BODEGUERO o ADMIN.",
   }),
+  req("Crear inventario de la variante", "POST", "/api/inventario", {
+    auth: true,
+    body: { id_producto: "{{id_producto_nuevo}}", id_sucursal: "{{id_sucursal}}", cantidad: 10, lote: "L-2026-002", estado: "DISPONIBLE" },
+    tests: expectStatus(201),
+    description: "Stock de la variante para que el cambio de talla de la carpeta 13 tenga disponibilidad.",
+  }),
   req("Listar inventario", "GET", "/api/inventario", {
     auth: true,
     tests: expectStatus(200),
@@ -285,20 +330,27 @@ const inventario = folder("7. Inventario", [
 // 8. Pedidos
 // ---------------------------------------------------------------------------
 
+// Guarda el total recalculado por los hooks de DetallePedido (lo usa "Registrar pago").
+const CAPTURE_TOTAL = `
+const respTotal = pm.response.json();
+const total = respTotal.total_pedido ?? (respTotal.pedido && respTotal.pedido.total);
+if (total != null) pm.collectionVariables.set("total_pedido", Number(total));
+`.trim();
+
 const pedidos = folder("8. Pedidos", [
   req("Crear pedido / venta", "POST", "/api/pedidos", {
     auth: true,
     body: {
       id_cliente: "{{id_cliente}}",
       id_sucursal: "{{id_sucursal}}",
-      id_producto: "{{id_producto}}",
-      cantidad: 2,
-      precio_unitario: 150.0,
-      total: 300.0,
-      id_empleado: "{{id_empleado}}",
+      detalles: [{ id_producto: "{{id_producto}}", cantidad: 2 }],
     },
-    tests: captureId("id_pedido", "body.pedido && body.pedido.id_pedido", "Venta procesada"),
-    description: "Requiere rol CAJERO o ADMIN. Descuenta stock de Inventario usando FIFO por orden de ingreso (id_inventario ASC).",
+    tests: `${captureId("id_pedido", "body.pedido && body.pedido.id_pedido", "Venta procesada")}
+pm.test("Nace PENDIENTE de pago", () => pm.expect(body.pedido.estado).to.equal("PENDIENTE"));
+pm.test("Total calculado por el hook (> 0)", () => pm.expect(Number(body.pedido.total)).to.be.above(0));
+${CAPTURE_TOTAL}`,
+    description:
+      "Requiere rol CAJERO o ADMIN. Acepta varias lineas en `detalles` (o una sola con id_producto/cantidad en la raiz, por compatibilidad). Siempre nace PENDIENTE; el precio sale de Producto.precio_unitario y el total lo calculan los hooks afterCreate de DetallePedido (estado/total/precio_unitario del body se ignoran). Descuenta stock por FIFO (id_inventario ASC) con un movimiento VENTA por lote.",
   }),
   req("Listar pedidos", "GET", "/api/pedidos", {
     auth: true,
@@ -308,12 +360,11 @@ const pedidos = folder("8. Pedidos", [
     auth: true,
     tests: expectStatus(200),
   }),
-  req("Actualizar estado de pedido", "PUT", "/api/pedidos/{{id_pedido}}/estado", {
+  req("ENTREGADO desde PENDIENTE (rechazado)", "PUT", "/api/pedidos/{{id_pedido}}/estado", {
     auth: true,
     body: { estado: "ENTREGADO" },
-    tests: expectStatus(200),
-    description:
-      "Marca el pedido como ENTREGADO - precondición para poder solicitar devoluciones/cambios sobre él (ver folder 12). Estados válidos: PENDIENTE, PROCESADO, ENVIADO, ENTREGADO, CANCELADO.",
+    tests: expectStatus(400, "400 esperado: el pedido sigue PENDIENTE de pago"),
+    description: "Maquina de estados: un pedido PENDIENTE de pago no puede marcarse ENTREGADO (ni ENVIADO).",
   }),
   req("Historial de pedido", "GET", "/api/pedidos/{{id_pedido}}/historial", {
     auth: true,
@@ -327,12 +378,29 @@ const pedidos = folder("8. Pedidos", [
 
 const detallePedido = folder("9. Detalle Pedido", [
   req("Crear detalle de pedido", "POST", "/api/detalles", {
-    body: { id_pedido: "{{id_pedido}}", id_producto: "{{id_producto}}", id_sucursal: "{{id_sucursal}}", cantidad: 2, precio_unitario: 150.0 },
-    tests: captureId("id_detalle_pedido", "body.id_detalle_pedido", "Detalle creado"),
+    auth: true,
+    body: { id_pedido: "{{id_pedido}}", id_producto: "{{id_producto}}", cantidad: 2 },
+    tests: `${captureId("id_detalle_pedido", "body.id_detalle_pedido", "Detalle creado")}
+${CAPTURE_TOTAL}`,
     description:
-      "Descuenta directamente de Inventario (no usa FIFO ni crea movimiento de inventario, a diferencia de POST /api/pedidos). cantidad=2 a propósito: el folder 12 (Devoluciones) pide 1 unidad de este detalle para una devolución y otra unidad para un cambio de talla, sobre el mismo detalle.",
+      "Requiere rol CAJERO o ADMIN y que el pedido siga PENDIENTE. Precio desde el catalogo, stock de la sucursal del pedido por FIFO con movimiento VENTA; el hook afterCreate recalcula Pedido.total (se devuelve en total_pedido). cantidad=2 a proposito: el folder 13 (Devoluciones) pide 1 unidad de este detalle para una devolucion y otra unidad para un cambio de talla, sobre el mismo detalle.",
+  }),
+  req("Crear detalle temporal", "POST", "/api/detalles", {
+    auth: true,
+    body: { id_pedido: "{{id_pedido}}", id_producto: "{{id_producto}}", cantidad: 1 },
+    tests: `${captureId("id_detalle_temporal", "body.id_detalle_pedido", "Detalle temporal creado")}
+${CAPTURE_TOTAL}`,
+    description: "Linea que se elimina en la siguiente request para mostrar el hook afterDestroy.",
+  }),
+  req("Eliminar detalle temporal", "DELETE", "/api/detalles/{{id_detalle_temporal}}", {
+    auth: true,
+    tests: `${expectStatus(200)}
+${CAPTURE_TOTAL}`,
+    description: "Requiere rol CAJERO o ADMIN y pedido PENDIENTE. Devuelve las unidades a stock (movimiento CANCELACION) y el hook afterDestroy recalcula Pedido.total.",
   }),
   req("Listar detalles de pedido", "GET", "/api/detalles", {
+    auth: true,
+    query: { id_pedido: "{{id_pedido}}" },
     tests: expectStatus(200),
   }),
 ]);
@@ -344,10 +412,21 @@ const detallePedido = folder("9. Detalle Pedido", [
 const pagos = folder("10. Pagos", [
   req("Registrar pago", "POST", "/api/pagos", {
     auth: true,
-    body: { metodo_pago: "PAYPAL", monto: 300.0, id_pedido: "{{id_pedido}}" },
+    body: { metodo_pago: "PAYPAL", monto: rawVar("total_pedido"), id_pedido: "{{id_pedido}}" },
     tests: captureId("id_pago", "body.pago && body.pago.id_pago", "Pago registrado"),
     description:
-      "Requiere rol CAJERO o ADMIN. metodo_pago debe ser 'STRIPE' o 'PAYPAL' (unicos valores del ENUM en app/models/pago.model.js - cualquier otro valor, como 'EFECTIVO', falla con 400). Se usa PAYPAL por defecto para no depender de la API real de Stripe; cambiar a 'STRIPE' intenta crear un PaymentIntent real con STRIPE_SECRET_KEY.",
+      "Requiere rol CAJERO o ADMIN y pedido PENDIENTE; el monto no puede superar el saldo pendiente (usa {{total_pedido}}, capturado de las requests anteriores). metodo_pago debe ser 'STRIPE' o 'PAYPAL' (unicos valores del ENUM en app/models/pago.model.js). Se usa PAYPAL para no depender de la API real de Stripe: queda PENDIENTE hasta 'Confirmar pago'. Con 'STRIPE' se crea un PaymentIntent real y lo confirma el webhook.",
+  }),
+  req("Confirmar pago", "PUT", "/api/pagos/{{id_pago}}/confirmar", {
+    auth: true,
+    tests: `${expectStatus(200)}
+pm.test("El pedido pasa a PROCESADO", () => pm.expect(pm.response.json().estado_pedido).to.equal("PROCESADO"));`,
+    description: "Requiere rol CAJERO o ADMIN. Marca el pago COMPLETADO; cuando los pagos completados cubren el total, el pedido pasa automaticamente de PENDIENTE a PROCESADO. Un pago STRIPE solo se confirma si Stripe reporta el PaymentIntent como succeeded.",
+  }),
+  req("Anular pago pendiente (referencia)", "PUT", "/api/pagos/{{id_pago}}/anular", {
+    auth: true,
+    tests: expectStatus(400, "400 esperado: {{id_pago}} ya fue confirmado; solo se anulan pagos PENDIENTES"),
+    description: "Requiere rol CAJERO o ADMIN. Marca FALLIDO un pago PENDIENTE que no se completara (en STRIPE cancela tambien el PaymentIntent) y libera el saldo; es requisito para cancelar un pedido con pagos pendientes. Aqui se espera 400 porque el pago ya esta COMPLETADO.",
   }),
   req("Listar pagos", "GET", "/api/pagos", {
     auth: true,
@@ -356,10 +435,42 @@ const pagos = folder("10. Pagos", [
 ]);
 
 // ---------------------------------------------------------------------------
-// 11. Reportes
+// 11. Estados del pedido
 // ---------------------------------------------------------------------------
 
-const reportes = folder("11. Reportes", [
+const estadosPedido = folder(
+  "11. Estados del pedido",
+  [
+    req("Agregar producto a pedido pagado (rechazado)", "POST", "/api/detalles", {
+      auth: true,
+      body: { id_pedido: "{{id_pedido}}", id_producto: "{{id_producto}}", cantidad: 1 },
+      tests: expectStatus(400, "400 esperado: el pedido ya no esta PENDIENTE"),
+    }),
+    req("ENTREGADO desde PROCESADO (rechazado)", "PUT", "/api/pedidos/{{id_pedido}}/estado", {
+      auth: true,
+      body: { estado: "ENTREGADO" },
+      tests: expectStatus(400, "400 esperado: ENVIADO es obligatorio antes de ENTREGADO"),
+    }),
+    req("Marcar ENVIADO", "PUT", "/api/pedidos/{{id_pedido}}/estado", {
+      auth: true,
+      body: { estado: "ENVIADO" },
+      tests: expectStatus(200),
+    }),
+    req("Marcar ENTREGADO", "PUT", "/api/pedidos/{{id_pedido}}/estado", {
+      auth: true,
+      body: { estado: "ENTREGADO" },
+      tests: expectStatus(200),
+      description: "ENTREGADO es la precondicion para solicitar devoluciones/cambios sobre el pedido (ver folder 13).",
+    }),
+  ],
+  "Maquina de estados: PENDIENTE (de pago) -> PROCESADO (pagado) -> ENVIADO -> ENTREGADO; PENDIENTE -> CANCELADO (devuelve el stock). ENTREGADO y CANCELADO son finales.",
+);
+
+// ---------------------------------------------------------------------------
+// 12. Reportes
+// ---------------------------------------------------------------------------
+
+const reportes = folder("12. Reportes", [
   req("Historial de ventas", "GET", "/api/reportes/ventas", {
     auth: true,
     tests: expectStatus(200),
@@ -372,11 +483,12 @@ const reportes = folder("11. Reportes", [
 ]);
 
 // ---------------------------------------------------------------------------
-// 12. Devoluciones
+// 13. Devoluciones
 // ---------------------------------------------------------------------------
 
-const devoluciones = folder("12. Devoluciones", [
+const devoluciones = folder("13. Devoluciones", [
   req("Crear solicitud de devolucion", "POST", "/api/devoluciones", {
+    auth: true,
     body: {
       id_pedido: "{{id_pedido}}",
       id_cliente: "{{id_cliente}}",
@@ -389,6 +501,7 @@ const devoluciones = folder("12. Devoluciones", [
     description: "El pedido debe existir, pertenecer a id_cliente y estar en estado ENTREGADO. motivo es un ENUM (DEFECTUOSO, TALLA_INCORRECTA, PRODUCTO_INCORRECTO, DANADO_ENVIO, OTRO) - ver app/models/devolucion.model.js.",
   }),
   req("Crear solicitud de cambio de talla/variante", "POST", "/api/devoluciones", {
+    auth: true,
     body: {
       id_pedido: "{{id_pedido}}",
       id_cliente: "{{id_cliente}}",
@@ -400,9 +513,11 @@ const devoluciones = folder("12. Devoluciones", [
     tests: expectStatus(201),
   }),
   req("Listar devoluciones", "GET", "/api/devoluciones", {
+    auth: true,
     tests: expectStatus(200),
   }),
   req("Obtener devolucion por id", "GET", "/api/devoluciones/{{id_devolucion}}", {
+    auth: true,
     tests: `
 pm.test("Responde 200", () => pm.response.to.have.status(200));
 const body = pm.response.json();
@@ -445,10 +560,10 @@ if (body.DetalleDevolucions && body.DetalleDevolucions.length) {
 ]);
 
 // ---------------------------------------------------------------------------
-// 13. Auditoria
+// 14. Auditoria
 // ---------------------------------------------------------------------------
 
-const auditoria = folder("13. Auditoría", [
+const auditoria = folder("14. Auditoría", [
   req("Registrar auditoria manual", "POST", "/api/auditoria", {
     auth: true,
     body: { accion: "ACCION_MANUAL", tabla_afectada: "Producto", registro_afectado_id: "{{id_producto}}", detalles: "Registro de auditoria manual desde Postman" },
@@ -462,11 +577,11 @@ const auditoria = folder("13. Auditoría", [
 ]);
 
 // ---------------------------------------------------------------------------
-// 14. Webhook (Stripe)
+// 15. Webhook (Stripe)
 // ---------------------------------------------------------------------------
 
 const webhook = folder(
-  "14. Webhook (Stripe)",
+  "15. Webhook (Stripe)",
   [
     req("Stripe webhook (referencia, no ejecutar desde Postman)", "POST", "/api/webhook", {
       tests: `pm.test("Firma invalida rechazada", () => pm.expect(pm.response.code).to.equal(400));`,
@@ -491,11 +606,12 @@ const collection = {
       "Colección importable en Postman con todos los endpoints reales del backend distribuidora-backend (Express + Sequelize + PostgreSQL), agrupados por módulo.\n\nRequiere el backend corriendo (`npm start`, puerto definido en .env.development, por defecto 8080). Ejecutar primero '0. Autenticación > Registro' y 'Login' - el token JWT se guarda automáticamente en la variable de colección `token` y las requests protegidas lo usan vía el header Authorization.",
     schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
   },
-  item: [auth, sucursales, clientes, proveedores, categorias, empleados, productos, inventario, pedidos, detallePedido, pagos, reportes, devoluciones, auditoria, webhook],
+  item: [auth, sucursales, clientes, proveedores, categorias, empleados, productos, inventario, pedidos, detallePedido, pagos, estadosPedido, reportes, devoluciones, auditoria, webhook],
   variable: [
     { key: "baseUrl", value: "http://localhost:8080" },
     { key: "token", value: "" },
-    { key: "empleado_email", value: "" },
+    { key: "admin_email", value: "admin@distribuidora.com" },
+    { key: "admin_password", value: "Admin123!" },
     { key: "id_sucursal", value: "1" },
     { key: "id_cliente", value: "1" },
     { key: "id_proveedor", value: "1" },
@@ -506,6 +622,8 @@ const collection = {
     { key: "id_inventario", value: "1" },
     { key: "id_pedido", value: "1" },
     { key: "id_detalle_pedido", value: "1" },
+    { key: "id_detalle_temporal", value: "1" },
+    { key: "total_pedido", value: "0" },
     { key: "id_pago", value: "1" },
     { key: "id_devolucion", value: "1" },
     { key: "id_detalle_devolucion", value: "1" },

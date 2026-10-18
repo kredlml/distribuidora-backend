@@ -1,43 +1,96 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const db = require("../models");
-const Pedido = db.pedido; 
+const Pago = db.pago;
+const Pedido = db.pedido;
+const { registrarAuditoria } = require("../utils/auditoria");
+const { totalPagado, procesarPedidoSiEstaPagado } = require("../utils/facturacion");
+
+// payment_intent.succeeded: el dinero ya entró. Si el pedido sigue PENDIENTE y el monto
+// cabe en el saldo, el pago cuenta y el pedido puede pasar a PROCESADO; si no (pedido
+// cancelado/ya pagado o cobro de más), se registra igual pero queda marcado para reembolso.
+async function cobroExitoso(pago, t) {
+  const pedido = await Pedido.findByPk(pago.id_pedido, { transaction: t, lock: t.LOCK.UPDATE });
+  const saldo = pedido ? Math.round((Number(pedido.total) - await totalPagado(pedido.id_pedido, t)) * 100) / 100 : 0;
+
+  pago.estado_pago = 'COMPLETADO';
+  await pago.save({ transaction: t });
+
+  if (!pedido || pedido.estado !== 'PENDIENTE' || Number(pago.monto) > saldo) {
+    await registrarAuditoria({
+      id_empleado: null,
+      accion: 'PAGO_REQUIERE_REEMBOLSO',
+      tabla_afectada: 'Pago',
+      registro_afectado_id: pago.id_pago,
+      detalles: `Stripe cobró ${Number(pago.monto).toFixed(2)} (pago #${pago.id_pago}) pero el pedido #${pago.id_pedido} ${pedido ? `está ${pedido.estado} con saldo ${saldo.toFixed(2)}` : 'no existe'}; debe reembolsarse.`
+    }, t);
+    console.warn(`Webhook: el pago #${pago.id_pago} se cobró pero requiere reembolso.`);
+    return;
+  }
+
+  await procesarPedidoSiEstaPagado(pago.id_pedido, null, t);
+}
 
 exports.stripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET; 
+
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   let event;
 
   try {
-    
+    // req.body llega crudo (Buffer) porque esta ruta se registra antes de bodyParser.json en server.js.
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
     console.error("Error de firma del Webhook:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  
-  if (event.type === 'payment_intent.succeeded') {
+  const EVENTOS = ['payment_intent.succeeded', 'payment_intent.payment_failed', 'payment_intent.canceled'];
+  if (EVENTOS.includes(event.type)) {
     const paymentIntent = event.data.object;
-    console.log(`¡Éxito! Stripe confirma que el banco cobró: ${paymentIntent.id}`);
-    
+    const t = await db.sequelize.transaction();
     try {
-      
-      await Pedido.update(
-        { estado: 'PAGADO' }, 
-        { where: { stripe_payment_id: paymentIntent.id } }
-      );
-      console.log("Base de datos actualizada a PAGADO.");
+      // El PaymentIntent se guardó en Pago.id_transaccion_externa al registrar el pago.
+      const pago = await Pago.findOne({
+        where: { id_transaccion_externa: paymentIntent.id },
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+
+      if (!pago) {
+        console.warn(`Webhook: no hay un Pago registrado para ${paymentIntent.id}.`);
+      } else if (event.type === 'payment_intent.succeeded') {
+        console.log(`¡Éxito! Stripe confirma que el banco cobró: ${paymentIntent.id}`);
+        // También FALLIDO: un pago anterior a este cambio pudo quedar así tras un intento rechazado.
+        if (pago.estado_pago === 'PENDIENTE' || pago.estado_pago === 'FALLIDO') {
+          await cobroExitoso(pago, t);
+        }
+      } else if (event.type === 'payment_intent.payment_failed') {
+        // No es definitivo: el cliente puede reintentar con otra tarjeta sobre el mismo
+        // PaymentIntent, así que el pago sigue PENDIENTE y solo se deja constancia.
+        console.log(`El cobro rebotó o la tarjeta fue declinada: ${paymentIntent.id}`);
+        await registrarAuditoria({
+          id_empleado: null,
+          accion: 'PAGO_INTENTO_FALLIDO',
+          tabla_afectada: 'Pago',
+          registro_afectado_id: pago.id_pago,
+          detalles: `Stripe rechazó un intento de cobro del pago #${pago.id_pago} (pedido #${pago.id_pedido}); el pago sigue PENDIENTE.`
+        }, t);
+      } else if (pago.estado_pago === 'PENDIENTE') {
+        // payment_intent.canceled: ese PaymentIntent ya no podrá cobrarse.
+        pago.estado_pago = 'FALLIDO';
+        await pago.save({ transaction: t });
+      }
+
+      await t.commit();
     } catch (error) {
+      await t.rollback();
       console.error("Error actualizando la base de datos:", error);
+      // 500 para que Stripe reintente la notificación más tarde.
+      return res.status(500).send();
     }
-  } else if (event.type === 'payment_intent.payment_failed') {
-    const paymentIntent = event.data.object;
-    console.log(`El cobro rebotó o la tarjeta fue declinada: ${paymentIntent.id}`);
-    
   }
 
-  
+
   res.status(200).send();
 };

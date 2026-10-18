@@ -18,7 +18,9 @@ module.exports = (sequelize, Sequelize) => {
         'CAMBIO_SALIDA',
         'CAMBIO_ENTRADA',
         'PRODUCTO_DANADO',
-        'PRODUCTO_DEFECTUOSO'
+        'PRODUCTO_DEFECTUOSO',
+        // Unidades devueltas a stock al quitar un producto de un pedido PENDIENTE o al cancelarlo.
+        'CANCELACION'
       ),
       allowNull: false
     },

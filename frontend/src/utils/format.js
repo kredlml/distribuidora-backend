@@ -1,4 +1,4 @@
-const ACENTOS = [["cambio talla", "cambio de talla"], ["cambio variante", "cambio de variante"], ["devolucion", "devolución"], ["reintegracion", "reintegración"], ["revision", "revisión"], ["danado", "dañado"], ["envio", "envío"], ["danada", "dañada"]];
+const ACENTOS = [["cambio talla", "cambio de talla"], ["cambio variante", "cambio de variante"], ["devolucion", "devolución"], ["reintegracion", "reintegración"], ["revision", "revisión"], ["danado", "dañado"], ["envio", "envío"], ["danada", "dañada"], ["cancelacion", "cancelación"]];
 
 export const humanizar = (s) => {
   if (!s) return "—";

@@ -14,13 +14,9 @@ var corsOptions = {
 };
 app.use(cors(corsOptions));
 
-/*
-app.post(
-  "/api/pago/webhook",
-  express.raw({ type: "application/json" }),
-  require("./app/controllers/pago.controller.js").webhook
-);
-*/
+// El webhook de Stripe va ANTES de bodyParser.json: la firma se valida sobre el body crudo
+// (express.raw en webhook.routes); si el JSON ya fue parseado, la validación siempre falla.
+require("./app/routes/webhook.routes")(app);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -50,7 +46,6 @@ require("./app/routes/reporte.routes")(app);
 require("./app/routes/auth.routes")(app);
 require("./app/routes/devolucion.routes")(app);
 require("./app/routes/auditoria.routes")(app);
-require("./app/routes/webhook.routes")(app);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
