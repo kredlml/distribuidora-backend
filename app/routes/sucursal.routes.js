@@ -12,6 +12,9 @@ module.exports = app => {
   // Actualizar una sucursal por id (solo ADMIN)
   router.put("/:id", [verificarToken, isAdmin], sucursales.update);
 
+  // Eliminar una sucursal sin historial (solo ADMIN); con historial se desactiva
+  router.delete("/:id", [verificarToken, isAdmin], sucursales.delete);
+
   // Definir el prefijo base para toda esta ruta
   app.use('/api/sucursales', router);
 };

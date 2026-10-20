@@ -6,6 +6,8 @@ const ICON = {
   out: "M9 4H5v16h4M16 8l4 4-4 4M20 12H9",
   go: "M5 12h14M13 6l6 6-6 6",
   tag: "M20 12l-8 8-9-9V4h7zM7.5 7.5h.01",
+  store: "M3 9l1.5-5h15L21 9M3 9v11h18V9M3 9h18M9 20v-6h6v6",
+  users: "M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-2a4 4 0 0 0-3-3.87M16 2.13a4 4 0 0 1 0 7.75",
 };
 
 export default function Icon({ name }) {

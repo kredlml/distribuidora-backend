@@ -25,7 +25,8 @@ export default function StockTab({ prods, sucs, reload }) {
       </label>
       {sucs.length ? (
         <label className="sm muted">Sucursal
-          <Select className="field" name="id_sucursal" required placeholder="Elige la sucursal" options={sucs.map((x) => [x.id_sucursal, x.nombre])} />
+          <Select className="field" name="id_sucursal" required placeholder={sucs.some((x) => x.activo !== false) ? "Elige la sucursal" : "No hay sucursales activas (actívalas en Sucursales)"}
+            options={sucs.filter((x) => x.activo !== false).map((x) => [x.id_sucursal, x.nombre])} />
         </label>
       ) : (
         <label className="sm muted">Número de sucursal<input className="field" name="id_sucursal" type="number" min="1" step="1" required /></label>

@@ -3,9 +3,9 @@ module.exports = app => {
   const authJwt = require("../middlewares/authJwt.js");
   var router = require("express").Router();
 
-  // Datos de auditoría: solo personal autenticado puede escribir/consultar.
-  router.post("/", authJwt.verificarToken, auditorias.create);
-  router.get("/", authJwt.verificarToken, auditorias.findAll);
+  // Auditoría: solo ADMIN (contiene correos y puestos del personal, y no debe poder falsificarse).
+  router.post("/", [authJwt.verificarToken, authJwt.isAdmin], auditorias.create);
+  router.get("/", [authJwt.verificarToken, authJwt.isAdmin], auditorias.findAll);
 
   app.use('/api/auditoria', router);
 };

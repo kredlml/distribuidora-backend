@@ -13,7 +13,7 @@ button, input, select, textarea { font: inherit; letter-spacing: inherit; color:
 :focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
 [hidden] { display: none !important; }
 
-#shell { display: grid; grid-template-columns: auto 1fr; min-height: 100vh; }
+#shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 100vh; }
 #app { grid-column: 2; width: 100%; max-width: 1200px; margin: 0 auto; padding: 32px 24px 64px; }
 .mark { font-size: 20px; letter-spacing: -.05em; }
 .mark i { font-style: normal; color: var(--violet); }
@@ -26,6 +26,7 @@ h2 { font-size: 16px; margin: 0 0 12px; font-weight: 400; }
 
 .card { background: var(--white); border-radius: 28px; box-shadow: var(--sh-card); padding: 24px; }
 .stack { display: grid; gap: 12px; }
+.stack > * { min-width: 0; }
 .sec { margin-top: 24px; }
 .empty { text-align: center; padding: 48px 24px; }
 .back { background: none; border: 0; cursor: pointer; color: var(--muted); padding: 0; margin-bottom: 12px; }

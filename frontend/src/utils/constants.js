@@ -12,6 +12,14 @@ export const MOTIVOS = ["DEFECTUOSO", "TALLA_INCORRECTA", "PRODUCTO_INCORRECTO",
 export const INV_ESTADOS = ["DISPONIBLE", "DANADA", "DEFECTUOSA"];
 export const INV_TONO = { DISPONIBLE: "ok", DANADA: "bad", DEFECTUOSA: "bad" };
 
+// Motivos de una baja de stock (mismos códigos que inventario.controller).
+export const MOTIVOS_AJUSTE = [
+  ["CORRECCION_CONTEO", "Corrección por conteo físico"], ["PERDIDA", "Pérdida o extravío"], ["ROBO", "Robo"],
+  ["DANO", "Daño en bodega"], ["DESCARTE", "Descarte de prenda dañada o defectuosa"], ["OTRO", "Otro motivo (explícalo)"],
+];
+
+export const PUESTOS = [["ADMIN", "Administrador"], ["CAJERO", "Cajero"], ["BODEGUERO", "Bodeguero"]];
+
 export const ACCION = {
   aprobar: { boton: "Aprobar", titulo: "Aprobar devolución", texto: "La solicitud pasará a Aprobada y podrá recibirse en bodega.", obs: true, ok: "aprobada" },
   rechazar: { boton: "Rechazar", titulo: "Rechazar devolución", texto: "La solicitud se cierra y sus prendas dejan de contar como devueltas.", obs: true, ok: "rechazada" },

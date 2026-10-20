@@ -32,6 +32,7 @@ export default function Login() {
           <div className="err" role="alert">{error}</div>
           <button className="btn pri" disabled={enviando}>Iniciar sesión</button>
         </form>
+        <p className="muted sm">¿No tienes cuenta o la olvidaste? Pide a un administrador que te registre o te asigne una contraseña temporal.</p>
       </section>
     </main>
   );

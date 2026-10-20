@@ -5,6 +5,9 @@ export const PERMISOS = {
   reintegrar: ["ADMIN", "BODEGUERO"], cambiar: ["ADMIN", "BODEGUERO"],
   crear: ["ADMIN", "CAJERO"],
   catalogo: ["ADMIN", "BODEGUERO"],
+  // Sucursales: ver y ajustar stock ADMIN/BODEGUERO; crear, editar y eliminar sucursales solo ADMIN.
+  sucursales: ["ADMIN", "BODEGUERO"], ajustarStock: ["ADMIN", "BODEGUERO"], gestionarSucursales: ["ADMIN"],
+  empleados: ["ADMIN"],
 };
 
 export const ROLES = ["ADMIN", "CAJERO", "BODEGUERO"];

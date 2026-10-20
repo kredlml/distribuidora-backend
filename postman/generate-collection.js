@@ -144,6 +144,17 @@ const auth = folder(
       body: { nombre: "Intruso", apellido: "X", puesto: "ADMIN", email: "intruso.{{$timestamp}}@example.com", password: "Password123" },
       tests: expectStatus(403, "403 esperado: con empleados ya registrados solo un ADMIN autenticado puede registrar"),
     }),
+    req("Login con contraseña incorrecta (rechazado)", "POST", "/api/auth/login", {
+      body: { email: "{{admin_email}}", password: "incorrecta-123" },
+      tests: `${expectStatus(401)}
+pm.test("Mismo mensaje exista o no el correo", () => pm.expect(pm.response.json().message).to.equal("Correo o contraseña incorrectos."));`,
+      description: "El mensaje es igual para un correo inexistente, así no se puede averiguar qué correos tienen cuenta.",
+    }),
+    req("Mi sesión (yo)", "GET", "/api/auth/yo", {
+      auth: true,
+      tests: expectStatus(200),
+      description: "Datos actuales del empleado del token (nombre, puesto, sucursal). El panel lo usa para refrescar el puesto.",
+    }),
   ],
   "Ejecutar Registro inicial y Login antes que cualquier request marcada como protegida (usa el header Authorization: Bearer {{token}}). Registrar empleados requiere un ADMIN (ver folder 5).",
 );
@@ -173,6 +184,16 @@ const sucursales = folder("1. Sucursales", [
     body: { activo: false },
     tests: expectStatus(403, "403 esperado: modificar sucursales requiere un ADMIN autenticado"),
   }),
+  req("Crear sucursal temporal", "POST", "/api/sucursales", {
+    auth: true,
+    body: { nombre: "Sucursal temporal", direccion: "Calzada Roosevelt 1-1", ciudad: "Mixco" },
+    tests: captureId("id_sucursal_temporal", "body.id_sucursal", "Sucursal temporal creada"),
+  }),
+  req("Eliminar sucursal sin historial", "DELETE", "/api/sucursales/{{id_sucursal_temporal}}", {
+    auth: true,
+    tests: expectStatus(200),
+    description: "Requiere rol ADMIN. Solo se elimina si nunca tuvo empleados, inventario ni pedidos; si no, responde 409 y hay que desactivarla (activo=false). Ver 'Eliminar sucursal con historial' en el folder 7.",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -200,11 +221,19 @@ pm.test("No expone contraseñas", () => pm.expect(pm.response.json().every(c => 
 
 const proveedores = folder("3. Proveedores", [
   req("Crear proveedor", "POST", "/api/proveedores", {
+    auth: true,
     body: { nombre_empresa: "Textiles S.A.", nombre_contacto: "Carlos Ramirez", telefono: "22221111", email: "contacto@textiles.com", direccion: "Zona 4, Guatemala", activo: true },
     tests: captureId("id_proveedor", "body.id_proveedor", "Proveedor creado"),
+    description: "Requiere rol BODEGUERO o ADMIN.",
   }),
   req("Listar proveedores", "GET", "/api/proveedores", {
+    auth: true,
     tests: expectStatus(200),
+    description: "Requiere estar autenticado (datos de contacto internos).",
+  }),
+  req("Crear proveedor sin token (rechazado)", "POST", "/api/proveedores", {
+    body: { nombre_empresa: "Intruso S.A." },
+    tests: expectStatus(403),
   }),
 ]);
 
@@ -222,6 +251,22 @@ const categorias = folder("4. Categorías", [
   req("Listar categorias", "GET", "/api/categorias", {
     tests: expectStatus(200),
   }),
+  req("Actualizar categoria", "PUT", "/api/categorias/{{id_categoria}}", {
+    auth: true,
+    body: { descripcion: "Camisas de vestir, casuales y de lino" },
+    tests: expectStatus(200),
+    description: "Requiere rol BODEGUERO o ADMIN. Acepta nombre (único, sin distinguir mayúsculas) y descripcion.",
+  }),
+  req("Crear categoria temporal", "POST", "/api/categorias", {
+    auth: true,
+    body: { nombre: "Temporal-{{$timestamp}}" },
+    tests: captureId("id_categoria_temporal", "body.id_categoria", "Categoria temporal creada"),
+  }),
+  req("Eliminar categoria sin prendas", "DELETE", "/api/categorias/{{id_categoria_temporal}}", {
+    auth: true,
+    tests: expectStatus(200),
+    description: "Requiere rol ADMIN. Si alguna prenda usa el tipo responde 409 (ver 'Eliminar categoria en uso' en el folder 6).",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -231,9 +276,72 @@ const categorias = folder("4. Categorías", [
 const empleados = folder("5. Empleados", [
   req("Registrar cajero (requiere ADMIN)", "POST", "/api/auth/registro", {
     auth: true,
-    body: { nombre: "Carla", apellido: "Cajera", puesto: "CAJERO", email: "carla.cajera.{{$timestamp}}@example.com", password: "Password123", id_sucursal: "{{id_sucursal}}" },
-    tests: expectStatus(201, "Cajero registrado por el ADMIN"),
-    description: "Registro de empleados con contraseña (pueden iniciar sesion). Requiere token de ADMIN. puesto debe ser ADMIN, CAJERO o BODEGUERO.",
+    prerequest: 'pm.collectionVariables.set("cajero_email", `carla.cajera.${Date.now()}@example.com`);',
+    body: { nombre: "Carla", apellido: "Cajera", puesto: "CAJERO", email: "{{cajero_email}}", password: "Password123", id_sucursal: "{{id_sucursal}}" },
+    tests: `${expectStatus(201, "Cajero registrado por el ADMIN")}
+const r = pm.response.json();
+if (r.id) pm.collectionVariables.set("id_cajero", r.id);`,
+    description: "Registro de empleados con contraseña (pueden iniciar sesion). Requiere token de ADMIN. puesto debe ser ADMIN, CAJERO o BODEGUERO; contraseña de 8 a 72 caracteres.",
+  }),
+  req("Login del cajero", "POST", "/api/auth/login", {
+    body: { email: "{{cajero_email}}", password: "Password123" },
+    tests: `${expectStatus(200)}
+const r = pm.response.json();
+if (r.token) pm.collectionVariables.set("token_cajero", r.token);`,
+  }),
+  req("Listar empleados como cajero (rechazado)", "GET", "/api/empleados", {
+    auth: "token_cajero",
+    tests: expectStatus(403, "403 esperado: la gestión de empleados es solo para ADMIN"),
+  }),
+  req("Actualizar empleado", "PUT", "/api/empleados/{{id_cajero}}", {
+    auth: true,
+    body: { puesto: "BODEGUERO", apellido: "Bodega" },
+    tests: `${expectStatus(200)}
+pm.test("Puesto actualizado", () => pm.expect(pm.response.json().puesto).to.equal("BODEGUERO"));`,
+    description: "Requiere rol ADMIN. Campos: nombre, apellido, email, puesto, id_sucursal, activo. El cambio de puesto aplica al instante (los roles se leen de la base en cada petición).",
+  }),
+  req("Restablecer contraseña de empleado", "PUT", "/api/empleados/{{id_cajero}}/password", {
+    auth: true,
+    body: { password: "Temporal123" },
+    tests: expectStatus(200),
+    description: "Requiere rol ADMIN. Asigna una contraseña temporal y cierra las sesiones abiertas de ese empleado; él la cambia con PUT /api/auth/password.",
+  }),
+  req("Token anterior tras restablecer (rechazado)", "GET", "/api/auth/yo", {
+    auth: "token_cajero",
+    tests: expectStatus(401, "401 esperado: restablecer la contraseña invalida los tokens ya emitidos"),
+  }),
+  req("Login del cajero con la contraseña temporal", "POST", "/api/auth/login", {
+    body: { email: "{{cajero_email}}", password: "Temporal123" },
+    tests: `${expectStatus(200)}
+const r = pm.response.json();
+if (r.token) pm.collectionVariables.set("token_cajero", r.token);`,
+  }),
+  req("Cambiar mi contraseña (empleado)", "PUT", "/api/auth/password", {
+    auth: "token_cajero",
+    body: { actual: "Temporal123", nueva: "MiClave2026" },
+    tests: `${expectStatus(200)}
+const r = pm.response.json();
+if (r.token) pm.collectionVariables.set("token_cajero", r.token);`,
+    description: "Cualquier empleado autenticado. Pide la contraseña actual, cierra sus otras sesiones y devuelve un token nuevo para la actual.",
+  }),
+  req("Desactivarse a sí mismo (rechazado)", "PUT", "/api/empleados/{{id_empleado}}", {
+    auth: true,
+    body: { activo: false },
+    tests: expectStatus(400, "400 esperado: un ADMIN no puede desactivarse ni quitarse el puesto (y siempre queda un ADMIN activo)"),
+  }),
+  req("Desactivar empleado", "PUT", "/api/empleados/{{id_cajero}}", {
+    auth: true,
+    body: { activo: false },
+    tests: expectStatus(200),
+    description: "No hay DELETE de empleados: se desactivan para conservar su historial (pedidos, movimientos, auditoría).",
+  }),
+  req("Token de empleado desactivado (rechazado)", "GET", "/api/auth/yo", {
+    auth: "token_cajero",
+    tests: expectStatus(401, "401 esperado: desactivar a un empleado corta su sesión aunque el token no haya expirado"),
+  }),
+  req("Login de empleado desactivado (rechazado)", "POST", "/api/auth/login", {
+    body: { email: "{{cajero_email}}", password: "MiClave2026" },
+    tests: expectStatus(403),
   }),
   req("Crear empleado", "POST", "/api/empleados", {
     auth: true,
@@ -302,6 +410,10 @@ const productos = folder("6. Productos", [
     tests: expectStatus(200),
     description: "Requiere estar autenticado (cualquier empleado).",
   }),
+  req("Eliminar categoria en uso (rechazado)", "DELETE", "/api/categorias/{{id_categoria}}", {
+    auth: true,
+    tests: expectStatus(409, "409 esperado: hay prendas de este tipo; primero se cambian a otro tipo"),
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -328,6 +440,32 @@ const inventario = folder("7. Inventario", [
   req("Stock global", "GET", "/api/inventario/stock", {
     auth: true,
     tests: expectStatus(200),
+  }),
+  req("Inventario de una sucursal", "GET", "/api/inventario", {
+    auth: true,
+    query: { id_sucursal: "{{id_sucursal}}" },
+    tests: expectStatus(200),
+  }),
+  req("Dar de baja stock (ajuste)", "POST", "/api/inventario/ajustes", {
+    auth: true,
+    body: { id_sucursal: rawVar("id_sucursal"), motivo: "CORRECCION_CONTEO", observacion: "Conteo físico: faltan 2", ajustes: [{ id_inventario: rawVar("id_inventario"), cantidad_actual: 50, cantidad_nueva: 48 }] },
+    tests: `${expectStatus(200)}
+pm.test("Se dieron de baja 2 unidades", () => pm.expect(pm.response.json().unidades).to.equal(2));`,
+    description: "Requiere rol BODEGUERO o ADMIN. Solo baja stock (cantidad_nueva < actual; 0 = eliminar el stock de la fila) de una o varias filas a la vez. cantidad_actual es lo que vio el empleado: si cambió entretanto responde 409 sin tocar nada. Cada baja deja un movimiento AJUSTE_SALIDA en la trazabilidad. Motivos: CORRECCION_CONTEO, PERDIDA, ROBO, DANO, DESCARTE, OTRO (con observacion).",
+  }),
+  req("Ajuste con stock desactualizado (rechazado)", "POST", "/api/inventario/ajustes", {
+    auth: true,
+    body: { id_sucursal: rawVar("id_sucursal"), motivo: "PERDIDA", ajustes: [{ id_inventario: rawVar("id_inventario"), cantidad_actual: 50, cantidad_nueva: 0 }] },
+    tests: expectStatus(409, "409 esperado: la fila ya no tiene 50 unidades"),
+  }),
+  req("Ajuste que sube stock (rechazado)", "POST", "/api/inventario/ajustes", {
+    auth: true,
+    body: { id_sucursal: rawVar("id_sucursal"), motivo: "OTRO", observacion: "x", ajustes: [{ id_inventario: rawVar("id_inventario"), cantidad_actual: 48, cantidad_nueva: 60 }] },
+    tests: expectStatus(400, "400 esperado: para sumar unidades se usa POST /api/inventario"),
+  }),
+  req("Eliminar sucursal con historial (rechazado)", "DELETE", "/api/sucursales/{{id_sucursal}}", {
+    auth: true,
+    tests: expectStatus(409, "409 esperado: la sucursal tiene inventario y empleados; se desactiva en vez de borrarse"),
   }),
 ]);
 
@@ -710,6 +848,11 @@ const collection = {
     { key: "cliente_email", value: "" },
     { key: "id_pedido_tienda", value: "1" },
     { key: "id_pedido_cancelar", value: "1" },
+    { key: "id_sucursal_temporal", value: "1" },
+    { key: "id_categoria_temporal", value: "1" },
+    { key: "cajero_email", value: "" },
+    { key: "id_cajero", value: "1" },
+    { key: "token_cajero", value: "" },
   ],
 };
 

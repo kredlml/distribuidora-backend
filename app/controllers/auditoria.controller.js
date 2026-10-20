@@ -6,11 +6,13 @@ const Auditoria = db.auditoria;
 // una auditoría manual desde el front (p.ej. una acción administrativa fuera del flujo de devoluciones).
 exports.create = async (req, res) => {
   try {
+    req.body = req.body || {};
     if (!req.body.accion || !req.body.tabla_afectada) {
       return res.status(400).send({ message: "accion y tabla_afectada son obligatorios." });
     }
     const data = await Auditoria.create({
-      id_empleado: req.body.id_empleado || req.empleadoId || null,
+      // Siempre el empleado del token: no se puede registrar una acción a nombre de otro.
+      id_empleado: req.empleadoId,
       accion: req.body.accion,
       tabla_afectada: req.body.tabla_afectada,
       registro_afectado_id: req.body.registro_afectado_id || null,

@@ -4,4 +4,5 @@
 .nav svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .nav.on { background: var(--canvas); }
 .nav:disabled { color: #ccc; cursor: not-allowed; }
-.avatar { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; font-size: 12px; background: var(--white); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; font-size: 12px; background: var(--white); padding: 0; cursor: pointer; }
+.avatar:hover { border-color: var(--ink); }

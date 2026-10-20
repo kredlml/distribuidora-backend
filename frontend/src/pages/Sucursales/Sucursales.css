@@ -1,0 +1,17 @@
+.item.suc.on { background: var(--canvas); margin: 0 -12px; padding: 12px; border-radius: 16px; border-top-color: transparent; }
+.stock-head { margin-bottom: 12px; }
+.agotadas { flex: none; margin-bottom: 12px; }
+
+.tabla-scroll { overflow-x: auto; }
+.fila-stock { display: grid; grid-template-columns: 32px minmax(200px, 2fr) minmax(90px, 1fr) minmax(110px, 1fr) 80px; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); min-width: 560px; cursor: pointer; }
+.fila-stock.cab { border-top: 0; cursor: default; }
+.fila-stock.cero { opacity: .5; }
+.fila-stock input { width: 18px; height: 18px; accent-color: var(--violet); }
+.fila-stock .num { text-align: right; }
+
+.ajuste-lista { display: grid; gap: 8px; max-height: 40vh; overflow: auto; }
+.ajuste-fila { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.ajuste-fila:first-child { border-top: 0; }
+.ajuste-fila label { display: flex; align-items: center; gap: 8px; }
+.ajuste-fila .field { margin-top: 0; padding: 6px 12px; }
+.field.mal { border-color: var(--bad); }

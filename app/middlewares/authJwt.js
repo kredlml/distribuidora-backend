@@ -5,6 +5,12 @@ const Empleado = db.empleado;
 // Puestos que reconocen los controles de rol (isAdmin, isCajero, isBodeguero).
 exports.PUESTOS_VALIDOS = ["ADMIN", "CAJERO", "BODEGUERO"];
 
+const puestoDe = (empleado) => String((empleado && empleado.puesto) || "").trim().toUpperCase();
+exports.puestoDe = puestoDe;
+
+// Valida el JWT de un empleado y que su cuenta siga existiendo y activa: así, desactivar a un
+// empleado le corta el acceso al instante aunque su token aún no haya expirado. El empleado
+// queda en req.empleado para que los controles de rol no lo vuelvan a consultar.
 exports.verificarToken = (req, res, next) => {
   let tokenHeader = req.headers["authorization"];
 
@@ -14,7 +20,7 @@ exports.verificarToken = (req, res, next) => {
 
   const token = tokenHeader.split(" ")[1];
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
     if (err) {
       return res.status(401).send({ message: "¡Token no autorizado o expirado!" });
     }
@@ -22,9 +28,21 @@ exports.verificarToken = (req, res, next) => {
     if (decoded.tipo === "CLIENTE" || !decoded.id) {
       return res.status(403).send({ message: "¡Acceso denegado! Este token no pertenece a un empleado." });
     }
-
-    req.empleadoId = decoded.id;
-    next();
+    try {
+      const empleado = await Empleado.findByPk(decoded.id, { attributes: { exclude: ['password'] } });
+      if (!empleado || empleado.activo === false) {
+        return res.status(401).send({ message: "¡Token no autorizado! La cuenta del empleado no existe o está desactivada." });
+      }
+      // Tokens emitidos antes de un cambio de contraseña (o de una desactivación) ya no valen.
+      if ((decoded.v || 0) !== (empleado.token_version || 0)) {
+        return res.status(401).send({ message: "¡Token no autorizado! La sesión ya no es válida, inicia sesión de nuevo." });
+      }
+      req.empleadoId = empleado.id_empleado;
+      req.empleado = empleado;
+      next();
+    } catch (error) {
+      res.status(500).send({ message: "Error al validar la sesión del empleado." });
+    }
   });
 };
 
@@ -55,19 +73,23 @@ exports.verificarCliente = (req, res, next) => {
   });
 };
 
-
-exports.isAdmin = async (req, res, next) => {
-  try {
-    const empleado = await Empleado.findByPk(req.empleadoId);
-    if (empleado && empleado.puesto.toUpperCase() === "ADMIN") {
-      next();
-      return;
+// Fábrica de controles de rol: el puesto se lee de la base en cada petición (req.empleado),
+// así un cambio de puesto aplica de inmediato aunque el token se haya emitido antes.
+function exigirPuesto(puestos, mensaje) {
+  return async (req, res, next) => {
+    try {
+      const empleado = req.empleado || await Empleado.findByPk(req.empleadoId);
+      if (empleado && empleado.activo !== false && puestos.includes(puestoDe(empleado))) {
+        return next();
+      }
+      res.status(403).send({ message: mensaje });
+    } catch (error) {
+      res.status(500).send({ message: "Error al validar el rol de usuario." });
     }
-    res.status(403).send({ message: "¡Acceso denegado! Esta acción requiere privilegios de Administrador." });
-  } catch (error) {
-    res.status(500).send({ message: "Error al validar el rol de usuario." });
-  }
-};
+  };
+}
+
+exports.isAdmin = exigirPuesto(["ADMIN"], "¡Acceso denegado! Esta acción requiere privilegios de Administrador.");
 
 
 // Registro de empleados: con la base vacía, el primer empleado puede registrarse sin token
@@ -85,29 +107,7 @@ exports.permitirRegistro = async (req, res, next) => {
 };
 
 
-exports.isCajero = async (req, res, next) => {
-  try {
-    const empleado = await Empleado.findByPk(req.empleadoId);
-    if (empleado && (empleado.puesto.toUpperCase() === "CAJERO" || empleado.puesto.toUpperCase() === "ADMIN")) {
-      next();
-      return;
-    }
-    res.status(403).send({ message: "¡Acceso denegado! Solo los cajeros autorizados pueden realizar ventas." });
-  } catch (error) {
-    res.status(500).send({ message: "Error al validar el rol de usuario." });
-  }
-};
+exports.isCajero = exigirPuesto(["CAJERO", "ADMIN"], "¡Acceso denegado! Solo los cajeros autorizados pueden realizar ventas.");
 
 
-exports.isBodeguero = async (req, res, next) => {
-  try {
-    const empleado = await Empleado.findByPk(req.empleadoId);
-    if (empleado && (empleado.puesto.toUpperCase() === "BODEGUERO" || empleado.puesto.toUpperCase() === "ADMIN")) {
-      next();
-      return;
-    }
-    res.status(403).send({ message: "¡Acceso denegado! Solo el personal de bodega puede alterar el inventario." });
-  } catch (error) {
-    res.status(500).send({ message: "Error al validar el rol de usuario." });
-  }
-};
+exports.isBodeguero = exigirPuesto(["BODEGUERO", "ADMIN"], "¡Acceso denegado! Solo el personal de bodega puede alterar el inventario.");

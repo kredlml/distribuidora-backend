@@ -4,9 +4,11 @@ import RoleRoute from "./components/RoleRoute";
 import Catalogo from "./pages/Catalogo/Catalogo";
 import DevolucionDetalle from "./pages/DevolucionDetalle/DevolucionDetalle";
 import Devoluciones from "./pages/Devoluciones/Devoluciones";
+import Empleados from "./pages/Empleados/Empleados";
 import Inventario from "./pages/Inventario/Inventario";
 import Login from "./pages/Login/Login";
 import NuevaSolicitud from "./pages/NuevaSolicitud/NuevaSolicitud";
+import Sucursales from "./pages/Sucursales/Sucursales";
 import Trazabilidad from "./pages/Trazabilidad/Trazabilidad";
 import { PERMISOS } from "./utils/permisos";
 
@@ -22,6 +24,12 @@ export default function App() {
         <Route path="inventario" element={<Inventario />} />
         <Route path="catalogo" element={
           <RoleRoute roles={PERMISOS.catalogo} mensaje="Esta sección es solo para ADMIN o BODEGUERO."><Catalogo /></RoleRoute>
+        } />
+        <Route path="sucursales" element={
+          <RoleRoute roles={PERMISOS.sucursales} mensaje="Esta sección es solo para ADMIN o BODEGUERO."><Sucursales /></RoleRoute>
+        } />
+        <Route path="empleados" element={
+          <RoleRoute roles={PERMISOS.empleados} mensaje="Esta sección es solo para administradores."><Empleados /></RoleRoute>
         } />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

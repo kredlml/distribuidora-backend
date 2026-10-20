@@ -25,7 +25,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 const db = require("./app/models");
-db.sequelize.sync({ alter: true });
+const { asegurarIndicesUnicos } = require("./app/utils/migraciones");
+db.sequelize.sync({ alter: true }).then(() => asegurarIndicesUnicos(db));
 
 
 app.get("/", (req, res) => {
