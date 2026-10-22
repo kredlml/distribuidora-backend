@@ -4,6 +4,7 @@
 const INDICES_UNICOS = [
   { nombre: "empleado_email_lower_unico", tabla: '"Empleado"', expresion: "lower(email)", que: "correos de empleados" },
   { nombre: "categoria_nombre_lower_unico", tabla: '"Categoria"', expresion: "lower(nombre)", que: "nombres de tipos de prenda" },
+  { nombre: "cliente_email_lower_unico", tabla: '"Cliente"', expresion: "lower(email)", que: "correos de clientes" },
 ];
 
 async function asegurarIndicesUnicos(db) {

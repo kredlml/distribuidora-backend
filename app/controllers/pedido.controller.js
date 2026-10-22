@@ -47,14 +47,22 @@ exports.create = async (req, res) => {
 };
 
 
-// GET /api/pedidos?estado=&id_cliente=&id_sucursal=&desde=&hasta=
+// Origen de un pedido: los de la tienda en línea no tienen empleado; los de mostrador sí (el cajero).
+const origenDe = (pedido) => (pedido.id_empleado ? 'MOSTRADOR' : 'TIENDA');
+const ORIGENES = ['TIENDA', 'MOSTRADOR'];
+const esFecha = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s));
+// Los días del filtro desde/hasta son días de la tienda (Guatemala, UTC-6, sin horario de verano),
+// no del servidor (que en la nube suele correr en UTC).
+const ZONA_TIENDA = process.env.ZONA_HORARIA_TIENDA || '-06:00';
+
+// GET /api/pedidos?estado=&id_cliente=&id_sucursal=&origen=TIENDA|MOSTRADOR&desde=&hasta=
 // desde/hasta (YYYY-MM-DD) filtran por fecha_pedido, ambos extremos incluidos.
 // Ej.: pedidos entregados de un cliente (candidatos a devolución):
 //      /api/pedidos?id_cliente=3&estado=ENTREGADO
 exports.findAll = async (req, res) => {
   try {
     const Op = db.Sequelize.Op;
-    const { estado, id_cliente, id_sucursal, desde, hasta } = req.query;
+    const { estado, id_cliente, id_sucursal, origen, desde, hasta } = req.query;
     const where = {};
     if (estado) {
       if (!ESTADOS_PEDIDO_VALIDOS.includes(estado)) {
@@ -62,55 +70,88 @@ exports.findAll = async (req, res) => {
       }
       where.estado = estado;
     }
-    if (id_cliente) where.id_cliente = id_cliente;
-    if (id_sucursal) where.id_sucursal = id_sucursal;
+    for (const [campo, valor] of [['id_cliente', id_cliente], ['id_sucursal', id_sucursal]]) {
+      if (valor === undefined || valor === '') continue;
+      if (!Number.isInteger(Number(valor)) || Number(valor) <= 0) return res.status(400).send({ message: `${campo} debe ser un número válido.` });
+      where[campo] = Number(valor);
+    }
+    if (origen) {
+      if (!ORIGENES.includes(origen)) return res.status(400).send({ message: `Origen inválido. Valores permitidos: ${ORIGENES.join(', ')}.` });
+      where.id_empleado = origen === 'TIENDA' ? null : { [Op.ne]: null };
+    }
+    if ((desde && !esFecha(desde)) || (hasta && !esFecha(hasta))) {
+      return res.status(400).send({ message: "Las fechas desde/hasta deben tener el formato AAAA-MM-DD." });
+    }
     if (desde || hasta) {
       where.fecha_pedido = {};
-      if (desde) where.fecha_pedido[Op.gte] = new Date(`${desde}T00:00:00`);
-      if (hasta) where.fecha_pedido[Op.lte] = new Date(`${hasta}T23:59:59.999`);
+      if (desde) where.fecha_pedido[Op.gte] = new Date(`${desde}T00:00:00${ZONA_TIENDA}`);
+      if (hasta) where.fecha_pedido[Op.lte] = new Date(`${hasta}T23:59:59.999${ZONA_TIENDA}`);
     }
 
     const data = await Pedido.findAll({
       where,
-      include: [{ model: Cliente, attributes: ['id_cliente', 'nombre', 'apellido'] }],
+      include: [
+        { model: Cliente, attributes: ['id_cliente', 'nombre', 'apellido'] },
+        { model: Sucursal, attributes: ['id_sucursal', 'nombre'] },
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+      ],
       order: [['id_pedido', 'DESC']]
     });
-    res.send(data);
+    res.send(data.map((p) => ({ ...p.get({ plain: true }), origen: origenDe(p) })));
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al recuperar los pedidos." });
   }
 };
 
+// GET /api/pedidos/:id — detalle completo para el panel: cliente, sucursal, vendedor, líneas,
+// pagos, devoluciones y los saldos calculados (pagado, por confirmar y saldo pendiente).
 exports.findOne = async (req, res) => {
   try {
     const id = req.params.id;
+    if (!Number.isInteger(Number(id)) || Number(id) <= 0) {
+      return res.status(400).send({ message: "El número de pedido no es válido." });
+    }
 
     const pedido = await Pedido.findByPk(id, {
       include: [
-        { 
-          model: Cliente, 
-          attributes: ['nombre', 'apellido', 'email', 'telefono'] 
+        {
+          model: Cliente,
+          attributes: ['id_cliente', 'nombre', 'apellido', 'email', 'telefono', 'direccion']
         },
-        { 
-          model: Sucursal, 
-          attributes: ['nombre', 'ciudad'] 
+        {
+          model: Sucursal,
+          attributes: ['id_sucursal', 'nombre', 'ciudad']
         },
-        { 
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] },
+        {
           model: db.detalle_pedido, // Usamos la variable exacta de tu index.js
-          include: [{ 
-            model: Producto, 
-            attributes: ['nombre', 'talla', 'precio_unitario'] 
+          include: [{
+            model: Producto,
+            attributes: ['id_producto', 'nombre', 'talla', 'color', 'precio_unitario', 'id_producto_padre']
           }]
         },
-        { 
-          model: Pago, 
-          attributes: ['monto', 'metodo_pago', 'estado_pago', 'fecha_pago'] 
-        }
-      ]
+        {
+          model: Pago,
+          attributes: ['id_pago', 'monto', 'metodo_pago', 'estado_pago', 'fecha_pago', 'id_transaccion_externa']
+        },
+        { model: db.devolucion, attributes: ['id_devolucion', 'tipo', 'estado'] }
+      ],
+      order: [[db.detalle_pedido, 'id_detalle_pedido', 'ASC'], [Pago, 'id_pago', 'ASC']]
     });
 
     if (pedido) {
-      res.status(200).send(pedido);
+      const suma = (estado) => Math.round(pedido.Pagos.filter((x) => x.estado_pago === estado).reduce((s, x) => s + Number(x.monto), 0) * 100) / 100;
+      const pagado = suma('COMPLETADO'), por_confirmar = suma('PENDIENTE');
+      const saldo = Math.max(0, Math.round((Number(pedido.total) - pagado) * 100) / 100);
+      res.status(200).send({
+        ...pedido.get({ plain: true }),
+        origen: origenDe(pedido),
+        pagado,
+        por_confirmar,
+        saldo,
+        // Lo que todavía se puede cobrar sin pasarse del total (descuenta los pagos por confirmar).
+        por_cobrar: Math.max(0, Math.round((saldo - por_confirmar) * 100) / 100)
+      });
     } else {
       res.status(404).send({ message: `No se encontró el Pedido con id=${id}.` });
     }

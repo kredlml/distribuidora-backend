@@ -203,15 +203,29 @@ const sucursales = folder("1. Sucursales", [
 const clientes = folder("2. Clientes", [
   req("Crear cliente", "POST", "/api/clientes", {
     auth: true,
-    body: { nombre: "Maria", apellido: "Lopez", telefono: "55667788", email: "maria.lopez.{{$timestamp}}@example.com", direccion: "Zona 10, Guatemala", activo: true },
+    prerequest: 'pm.collectionVariables.set("cliente_mostrador_email", `maria.lopez.${Date.now()}@example.com`);',
+    body: { nombre: "Maria", apellido: "Lopez", telefono: "55667788", email: "{{cliente_mostrador_email}}", direccion: "Zona 10, Guatemala" },
     tests: captureId("id_cliente", "body.id_cliente", "Cliente creado"),
-    description: "email con {{$timestamp}} porque Cliente.email es unique en el modelo (app/models/cliente.model.js) - un valor fijo solo funciona la primera vez que se corre la coleccion.",
+    description: "Alta en mostrador (CAJERO o ADMIN). El email es opcional, se guarda en minúsculas y no puede repetirse (sin distinguir mayúsculas). El cliente nace sin cuenta web (tiene_cuenta_web=false).",
   }),
   req("Listar clientes", "GET", "/api/clientes", {
     auth: true,
     tests: `${expectStatus(200)}
-pm.test("No expone contraseñas", () => pm.expect(pm.response.json().every(c => !("password" in c))).to.be.true);`,
-    description: "Requiere estar autenticado como empleado (datos personales). Alta en mostrador: CAJERO o ADMIN.",
+pm.test("No expone contraseñas ni códigos", () => pm.expect(pm.response.json().every(c => !("password" in c) && !("codigo_activacion" in c))).to.be.true);`,
+    description: "Requiere estar autenticado como empleado (datos personales). Incluye tiene_cuenta_web.",
+  }),
+  req("Actualizar cliente", "PUT", "/api/clientes/{{id_cliente}}", {
+    auth: true,
+    body: { telefono: "55669900", direccion: "Zona 14, Guatemala" },
+    tests: expectStatus(200),
+    description: "CAJERO o ADMIN: nombre, apellido, telefono, direccion y email (solo si aún no tiene cuenta web). activo solo lo cambia un ADMIN.",
+  }),
+  req("Generar código de activación web", "POST", "/api/clientes/{{id_cliente}}/codigo-web", {
+    auth: true,
+    tests: `${expectStatus(201)}
+const r = pm.response.json();
+if (r.codigo) pm.collectionVariables.set("codigo_web", r.codigo);`,
+    description: "CAJERO o ADMIN. Código de un solo uso (XXXX-XXXX, válido 72 h) que caja entrega en persona para que el cliente active su cuenta en la tienda (folder 16, 'Activar cuenta de mostrador'). Solo se guarda su hash; un código nuevo invalida el anterior.",
   }),
 ]);
 
@@ -234,6 +248,17 @@ const proveedores = folder("3. Proveedores", [
   req("Crear proveedor sin token (rechazado)", "POST", "/api/proveedores", {
     body: { nombre_empresa: "Intruso S.A." },
     tests: expectStatus(403),
+  }),
+  req("Actualizar proveedor", "PUT", "/api/proveedores/{{id_proveedor}}", {
+    auth: true,
+    body: { telefono: "22229999", activo: true },
+    tests: expectStatus(200),
+    description: "BODEGUERO o ADMIN. Campos: nombre_empresa, nombre_contacto, telefono, email, direccion, activo.",
+  }),
+  req("Eliminar proveedor", "DELETE", "/api/proveedores/{{id_proveedor}}", {
+    auth: true,
+    tests: expectStatus(200),
+    description: "Solo ADMIN. Los proveedores no se relacionan con otros registros; para dejar de usarlo conservando el dato, desactívalo (activo=false).",
   }),
 ]);
 
@@ -558,7 +583,7 @@ const pagos = folder("10. Pagos", [
     body: { metodo_pago: "PAYPAL", monto: rawVar("total_pedido"), id_pedido: "{{id_pedido}}" },
     tests: captureId("id_pago", "body.pago && body.pago.id_pago", "Pago registrado"),
     description:
-      "Requiere rol CAJERO o ADMIN y pedido PENDIENTE; el monto no puede superar el saldo pendiente (usa {{total_pedido}}, capturado de las requests anteriores). metodo_pago debe ser 'STRIPE' o 'PAYPAL' (unicos valores del ENUM en app/models/pago.model.js). Se usa PAYPAL para no depender de la API real de Stripe: queda PENDIENTE hasta 'Confirmar pago'. Con 'STRIPE' se crea un PaymentIntent real y lo confirma el webhook.",
+      "Requiere rol CAJERO o ADMIN y pedido PENDIENTE; el monto no puede superar el saldo pendiente (usa {{total_pedido}}, capturado de las requests anteriores). metodo_pago: EFECTIVO o TARJETA (terminal POS; nacen COMPLETADOS, TARJETA acepta 'referencia' del voucher), PAYPAL (queda PENDIENTE hasta 'Confirmar pago') o STRIPE (PaymentIntent; lo usa la tienda en línea). Aquí se usa PAYPAL para mostrar la confirmación.",
   }),
   req("Confirmar pago", "PUT", "/api/pagos/{{id_pago}}/confirmar", {
     auth: true,
@@ -574,6 +599,32 @@ pm.test("El pedido pasa a PROCESADO", () => pm.expect(pm.response.json().estado_
   req("Listar pagos", "GET", "/api/pagos", {
     auth: true,
     tests: expectStatus(200),
+  }),
+  req("Venta de mostrador para cobrar en efectivo", "POST", "/api/pedidos", {
+    auth: true,
+    body: { id_cliente: "{{id_cliente}}", id_sucursal: "{{id_sucursal}}", detalles: [{ id_producto: "{{id_producto}}", cantidad: 1 }] },
+    tests: `${captureId("id_pedido_efectivo", "body.pedido && body.pedido.id_pedido", "Venta creada")}
+if (body.pedido) pm.collectionVariables.set("total_efectivo", Number(body.pedido.total));`,
+  }),
+  req("Cobrar en efectivo", "POST", "/api/pagos", {
+    auth: true,
+    body: { metodo_pago: "EFECTIVO", monto: rawVar("total_efectivo"), id_pedido: "{{id_pedido_efectivo}}" },
+    tests: `${expectStatus(201)}
+pm.test("Efectivo por el total: el pedido queda pagado al instante", () => pm.expect(pm.response.json().estado_pedido).to.equal("PROCESADO"));`,
+    description: "El efectivo y la tarjeta en terminal (POS) se registran COMPLETADOS: el cajero recibió el dinero en el momento.",
+  }),
+  req("Detalle del pedido con saldos", "GET", "/api/pedidos/{{id_pedido_efectivo}}", {
+    auth: true,
+    tests: `${expectStatus(200)}
+const p = pm.response.json();
+pm.test("Origen mostrador y saldo 0", () => { pm.expect(p.origen).to.equal("MOSTRADOR"); pm.expect(p.saldo).to.equal(0); });`,
+    description: "Incluye origen (TIENDA/MOSTRADOR), vendedor, líneas, pagos, devoluciones y los saldos pagado, por_confirmar, saldo y por_cobrar.",
+  }),
+  req("Listar pedidos de mostrador", "GET", "/api/pedidos", {
+    auth: true,
+    query: { origen: "MOSTRADOR" },
+    tests: expectStatus(200),
+    description: "Filtros: estado, id_cliente, id_sucursal, origen (TIENDA o MOSTRADOR), desde y hasta (AAAA-MM-DD).",
   }),
 ]);
 
@@ -762,6 +813,21 @@ const tienda = folder(
       body: { email: "{{cliente_email}}", password: "Cliente123" },
       tests: CAPTURE_CLIENTE,
     }),
+    req("Registro con correo de cliente de mostrador (rechazado)", "POST", "/api/tienda/auth/registro", {
+      body: { nombre: "Maria", apellido: "Lopez", email: "{{cliente_mostrador_email}}", password: "Mostrador123" },
+      tests: `${expectStatus(400)}
+pm.test("Indica activar la cuenta con el código de caja", () => pm.expect(pm.response.json().message).to.match(/caja/));`,
+    }),
+    req("Activar cuenta de mostrador", "POST", "/api/tienda/auth/activar", {
+      body: { email: "{{cliente_mostrador_email}}", codigo: "{{codigo_web}}", password: "Mostrador123" },
+      tests: `${expectStatus(200)}
+pm.test("Devuelve sesión del mismo cliente", () => pm.expect(pm.response.json().cliente.id_cliente).to.equal(Number(pm.collectionVariables.get("id_cliente"))));`,
+      description: "El cliente de mostrador (folder 2) crea su contraseña con el código que le dio caja. Conserva su ficha y su historial. El código es de un solo uso.",
+    }),
+    req("Reusar el código (rechazado)", "POST", "/api/tienda/auth/activar", {
+      body: { email: "{{cliente_mostrador_email}}", codigo: "{{codigo_web}}", password: "Otra123456" },
+      tests: expectStatus(400),
+    }),
     req("Token de cliente en el panel (rechazado)", "GET", "/api/pedidos", {
       auth: "token_cliente",
       tests: expectStatus(403, "403 esperado: un token de cliente no da acceso al panel de empleados"),
@@ -853,6 +919,10 @@ const collection = {
     { key: "cajero_email", value: "" },
     { key: "id_cajero", value: "1" },
     { key: "token_cajero", value: "" },
+    { key: "cliente_mostrador_email", value: "" },
+    { key: "codigo_web", value: "" },
+    { key: "id_pedido_efectivo", value: "1" },
+    { key: "total_efectivo", value: "0" },
   ],
 };
 

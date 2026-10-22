@@ -2,6 +2,9 @@ const db = require("../models");
 const Cliente = db.cliente;
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+const { registrarAuditoria } = require("../utils/auditoria");
+const { hashCodigo } = require("./cliente.controller");
 
 // Cuentas de clientes de la tienda en línea. El token lleva tipo CLIENTE para que nunca
 // sirva en el panel de empleados (verificarToken lo rechaza) y viceversa (verificarCliente).
@@ -12,9 +15,9 @@ function firmarToken(cliente) {
   return jwt.sign({ id_cliente: cliente.id_cliente, tipo: "CLIENTE" }, process.env.JWT_SECRET, { expiresIn: 86400 }); // 24 horas
 }
 
-// Datos públicos del cliente (nunca el hash de contraseña).
+// Datos públicos del cliente (nunca el hash de contraseña ni el código de activación).
 function perfilDe(cliente) {
-  const { password, ...datos } = cliente.get({ plain: true });
+  const { password, codigo_activacion, codigo_activacion_expira, ...datos } = cliente.get({ plain: true });
   return datos;
 }
 
@@ -55,11 +58,16 @@ exports.registro = async (req, res) => {
       return res.status(400).send({ message: e.message });
     }
 
-    // Si el email ya existe (aunque sea un cliente de mostrador sin cuenta web) no se permite
-    // tomar esa ficha: no hay forma de verificar que el correo sea de quien se registra.
-    const existente = await Cliente.findOne({ where: db.sequelize.where(db.sequelize.fn('lower', db.sequelize.col('email')), email) });
+    // Si el email ya existe no se permite tomar esa ficha registrándose: no hay forma de verificar
+    // que el correo sea de quien se registra. Un cliente de mostrador activa su cuenta con el
+    // código que le da caja en persona (POST /api/tienda/auth/activar).
+    const existente = await Cliente.scope('conPassword').findOne({ where: db.sequelize.where(db.sequelize.fn('lower', db.sequelize.col('email')), email) });
     if (existente) {
-      return res.status(400).send({ message: "Ya existe una cuenta con ese email. Inicia sesión o usa otro correo." });
+      return res.status(400).send({
+        message: existente.password
+          ? "Ya existe una cuenta con ese email. Inicia sesión o usa otro correo."
+          : "Ese correo ya está registrado en una de nuestras tiendas. Pide en caja tu código de activación y usa «Activar cuenta» para conservar tu historial."
+      });
     }
 
     const cliente = await Cliente.create({
@@ -71,6 +79,45 @@ exports.registro = async (req, res) => {
     res.status(201).send({ token: firmarToken(cliente), cliente: perfilDe(cliente) });
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al registrar la cuenta." });
+  }
+};
+
+// POST /api/tienda/auth/activar — { email, codigo, password }. Un cliente registrado en mostrador
+// crea su contraseña con el código de un solo uso que le entregó caja; conserva su ficha y su
+// historial de pedidos. Mismo mensaje para correo inexistente, código incorrecto o vencido.
+const ACTIVACION_INVALIDA = "El correo o el código no son válidos, o el código ya venció. Pide uno nuevo en caja.";
+exports.activar = async (req, res) => {
+  try {
+    const b = req.body || {};
+    const email = String(b.email || "").trim().toLowerCase();
+    if (!email || !b.codigo || !b.password) {
+      return res.status(400).send({ message: "El email, el código y la nueva contraseña son obligatorios." });
+    }
+    if (String(b.password).length < 8) {
+      return res.status(400).send({ message: "La contraseña debe tener al menos 8 caracteres." });
+    }
+    const hash = hashCodigo(b.codigo);
+
+    const cliente = await db.sequelize.transaction(async (t) => {
+      const c = await Cliente.scope('conCodigo').findOne({
+        where: db.sequelize.where(db.sequelize.fn('lower', db.sequelize.col('email')), email),
+        transaction: t, lock: t.LOCK.UPDATE
+      });
+      const vigente = c && !c.password && c.activo && c.codigo_activacion && c.codigo_activacion_expira && new Date(c.codigo_activacion_expira) > new Date();
+      const coincide = vigente && crypto.timingSafeEqual(Buffer.from(c.codigo_activacion, 'hex'), Buffer.from(hash, 'hex'));
+      if (!coincide) return null;
+      await c.update({ password: bcrypt.hashSync(String(b.password), 8), codigo_activacion: null, codigo_activacion_expira: null }, { transaction: t });
+      await registrarAuditoria({
+        id_empleado: null, accion: 'CLIENTE_CUENTA_WEB_ACTIVADA', tabla_afectada: 'Cliente',
+        registro_afectado_id: c.id_cliente, detalles: `El cliente #${c.id_cliente} activó su cuenta web con código de caja.`
+      }, t);
+      return c;
+    });
+    if (!cliente) return res.status(400).send({ message: ACTIVACION_INVALIDA });
+
+    res.status(200).send({ token: firmarToken(cliente), cliente: perfilDe(cliente) });
+  } catch (error) {
+    res.status(500).send({ message: error.message || "Error al activar la cuenta." });
   }
 };
 

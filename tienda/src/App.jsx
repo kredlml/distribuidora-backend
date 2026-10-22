@@ -5,6 +5,7 @@ import RutaPrivada from "./components/RutaPrivada";
 import Carrito from "./pages/Carrito/Carrito";
 import Catalogo from "./pages/Catalogo/Catalogo";
 import Checkout from "./pages/Checkout/Checkout";
+import Activar from "./pages/Cuenta/Activar";
 import Login from "./pages/Cuenta/Login";
 import Perfil from "./pages/Cuenta/Perfil";
 import Registro from "./pages/Cuenta/Registro";
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="carrito" element={<Carrito />} />
         <Route path="login" element={<Login />} />
         <Route path="registro" element={<Registro />} />
+        <Route path="activar" element={<Activar />} />
         <Route path="checkout" element={privada(<Checkout />)} />
         <Route path="perfil" element={privada(<Perfil />)} />
         <Route path="pedidos" element={privada(<MisPedidos />)} />

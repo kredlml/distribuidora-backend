@@ -8,6 +8,8 @@ module.exports = app => {
   // Cuenta del cliente (pública: registro e inicio de sesión, con límite de intentos por IP).
   router.post("/auth/registro", limitarIntentos({ max: 10 }), auth.registro);
   router.post("/auth/login", limitarIntentos({ max: 20 }), auth.login);
+  // Cliente de mostrador: activa su cuenta web con el código que le dio caja.
+  router.post("/auth/activar", limitarIntentos({ max: 10 }), auth.activar);
   router.get("/perfil", verificarCliente, auth.perfil);
   router.put("/perfil", verificarCliente, auth.actualizarPerfil);
 

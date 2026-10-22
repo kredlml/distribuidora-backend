@@ -27,6 +27,7 @@ export default function Login() {
         <button className="btn pri" disabled={enviando}>{enviando ? "Entrando…" : "Iniciar sesión"}</button>
       </form>
       <p className="sm">¿No tienes cuenta? <Link to="/registro" state={location.state}>Crea una</Link></p>
+      <p className="sm">¿Te registraron en caja? <Link to="/activar" state={location.state}>Activa tu cuenta con tu código</Link></p>
     </section>
   );
 }

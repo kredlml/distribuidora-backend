@@ -35,10 +35,14 @@ export default function Registro() {
         </div>
         <label className="sm muted">Teléfono (opcional)<input className="field" type="tel" name="telefono" autoComplete="tel" maxLength={20} /></label>
         <label className="sm muted">Dirección de entrega (opcional)<textarea className="field" name="direccion" autoComplete="street-address" maxLength={200} /></label>
-        <div className="err" role="alert">{error}</div>
+        <div className="err" role="alert">
+          {error}
+          {/caja/.test(error) && <> <Link to="/activar" state={location.state}>Activar mi cuenta</Link></>}
+        </div>
         <button className="btn pri" disabled={enviando}>{enviando ? "Creando cuenta…" : "Crear cuenta"}</button>
       </form>
       <p className="sm">¿Ya tienes cuenta? <Link to="/login" state={location.state}>Inicia sesión</Link></p>
+      <p className="sm">¿Te registraron en caja? <Link to="/activar" state={location.state}>Activa tu cuenta con tu código</Link></p>
     </section>
   );
 }

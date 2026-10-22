@@ -1,4 +1,5 @@
-#rail { position: sticky; top: 0; height: 100vh; width: 64px; background: var(--white); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0; }
+#rail { position: sticky; top: 0; height: 100vh; width: 64px; background: var(--white); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0; overflow-y: auto; }
+#rail > * { flex-shrink: 0; }
 #rail .sp { flex: 1; }
 .nav { width: 48px; height: 48px; border: 0; background: none; border-radius: 20px; display: grid; place-items: center; cursor: pointer; color: inherit; }
 .nav svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }

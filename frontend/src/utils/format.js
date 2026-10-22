@@ -15,6 +15,7 @@ export const fecha = (v) => {
 export const fechaDe = (x) => fecha(x.createdAt || x.fecha_movimiento || x.fecha || x.fecha_hora || x.updatedAt);
 export const nombreCli = (d) => (d.Cliente ? `${d.Cliente.nombre} ${d.Cliente.apellido || ""}`.trim() : `Cliente ${d.id_cliente}`);
 export const nombreEmp = (e) => (e ? `${e.nombre} ${e.apellido || ""}`.trim() : "Sistema");
+export const dinero = (n) => Number(n || 0).toLocaleString("es-GT", { style: "currency", currency: "GTQ" });
 export const prod = (p) => (p ? [p.nombre, p.talla, p.color].filter(Boolean).join(" ") : "—");
 export const vacioANull = (v) => { const t = String(v ?? "").trim(); return t === "" ? undefined : t; };
 // Observaciones guardadas como código (EN_MAYUSCULAS) se muestran legibles.

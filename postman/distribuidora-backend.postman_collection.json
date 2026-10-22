@@ -404,13 +404,22 @@
       ]
     },
     {
-      "id": "distribuidora-16",
+      "id": "distribuidora-18",
       "name": "2. Clientes",
       "item": [
         {
           "id": "distribuidora-14",
           "name": "Crear cliente",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"cliente_mostrador_email\", `maria.lopez.${Date.now()}@example.com`);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -438,7 +447,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Maria\",\n  \"apellido\": \"Lopez\",\n  \"telefono\": \"55667788\",\n  \"email\": \"maria.lopez.{{$timestamp}}@example.com\",\n  \"direccion\": \"Zona 10, Guatemala\",\n  \"activo\": true\n}",
+              "raw": "{\n  \"nombre\": \"Maria\",\n  \"apellido\": \"Lopez\",\n  \"telefono\": \"55667788\",\n  \"email\": \"{{cliente_mostrador_email}}\",\n  \"direccion\": \"Zona 10, Guatemala\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -446,7 +455,7 @@
               }
             },
             "url": "{{baseUrl}}/api/clientes",
-            "description": "email con {{$timestamp}} porque Cliente.email es unique en el modelo (app/models/cliente.model.js) - un valor fijo solo funciona la primera vez que se corre la coleccion."
+            "description": "Alta en mostrador (CAJERO o ADMIN). El email es opcional, se guarda en minúsculas y no puede repetirse (sin distinguir mayúsculas). El cliente nace sin cuenta web (tiene_cuenta_web=false)."
           },
           "response": []
         },
@@ -460,7 +469,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"No expone contraseñas\", () => pm.expect(pm.response.json().every(c => !(\"password\" in c))).to.be.true);"
+                  "pm.test(\"No expone contraseñas ni códigos\", () => pm.expect(pm.response.json().every(c => !(\"password\" in c) && !(\"codigo_activacion\" in c))).to.be.true);"
                 ]
               }
             }
@@ -474,18 +483,87 @@
               }
             ],
             "url": "{{baseUrl}}/api/clientes",
-            "description": "Requiere estar autenticado como empleado (datos personales). Alta en mostrador: CAJERO o ADMIN."
+            "description": "Requiere estar autenticado como empleado (datos personales). Incluye tiene_cuenta_web."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-16",
+          "name": "Actualizar cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"55669900\",\n  \"direccion\": \"Zona 14, Guatemala\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/clientes/{{id_cliente}}",
+            "description": "CAJERO o ADMIN: nombre, apellido, telefono, direccion y email (solo si aún no tiene cuenta web). activo solo lo cambia un ADMIN."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-17",
+          "name": "Generar código de activación web",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "const r = pm.response.json();",
+                  "if (r.codigo) pm.collectionVariables.set(\"codigo_web\", r.codigo);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/clientes/{{id_cliente}}/codigo-web",
+            "description": "CAJERO o ADMIN. Código de un solo uso (XXXX-XXXX, válido 72 h) que caja entrega en persona para que el cliente active su cuenta en la tienda (folder 16, 'Activar cuenta de mostrador'). Solo se guarda su hash; un código nuevo invalida el anterior."
           },
           "response": []
         }
       ]
     },
     {
-      "id": "distribuidora-20",
+      "id": "distribuidora-24",
       "name": "3. Proveedores",
       "item": [
         {
-          "id": "distribuidora-17",
+          "id": "distribuidora-19",
           "name": "Crear proveedor",
           "event": [
             {
@@ -528,7 +606,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-18",
+          "id": "distribuidora-20",
           "name": "Listar proveedores",
           "event": [
             {
@@ -555,7 +633,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-19",
+          "id": "distribuidora-21",
           "name": "Crear proveedor sin token (rechazado)",
           "event": [
             {
@@ -588,15 +666,82 @@
             "url": "{{baseUrl}}/api/proveedores"
           },
           "response": []
+        },
+        {
+          "id": "distribuidora-22",
+          "name": "Actualizar proveedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"22229999\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/proveedores/{{id_proveedor}}",
+            "description": "BODEGUERO o ADMIN. Campos: nombre_empresa, nombre_contacto, telefono, email, direccion, activo."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-23",
+          "name": "Eliminar proveedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/proveedores/{{id_proveedor}}",
+            "description": "Solo ADMIN. Los proveedores no se relacionan con otros registros; para dejar de usarlo conservando el dato, desactívalo (activo=false)."
+          },
+          "response": []
         }
       ]
     },
     {
-      "id": "distribuidora-26",
+      "id": "distribuidora-30",
       "name": "4. Categorías",
       "item": [
         {
-          "id": "distribuidora-21",
+          "id": "distribuidora-25",
           "name": "Crear categoria",
           "event": [
             {
@@ -639,7 +784,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-22",
+          "id": "distribuidora-26",
           "name": "Listar categorias",
           "event": [
             {
@@ -660,7 +805,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-23",
+          "id": "distribuidora-27",
           "name": "Actualizar categoria",
           "event": [
             {
@@ -700,7 +845,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-24",
+          "id": "distribuidora-28",
           "name": "Crear categoria temporal",
           "event": [
             {
@@ -742,7 +887,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-25",
+          "id": "distribuidora-29",
           "name": "Eliminar categoria sin prendas",
           "event": [
             {
@@ -771,11 +916,11 @@
       ]
     },
     {
-      "id": "distribuidora-41",
+      "id": "distribuidora-45",
       "name": "5. Empleados",
       "item": [
         {
-          "id": "distribuidora-27",
+          "id": "distribuidora-31",
           "name": "Registrar cajero (requiere ADMIN)",
           "event": [
             {
@@ -826,7 +971,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-28",
+          "id": "distribuidora-32",
           "name": "Login del cajero",
           "event": [
             {
@@ -863,7 +1008,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-29",
+          "id": "distribuidora-33",
           "name": "Listar empleados como cajero (rechazado)",
           "event": [
             {
@@ -889,7 +1034,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-30",
+          "id": "distribuidora-34",
           "name": "Actualizar empleado",
           "event": [
             {
@@ -930,7 +1075,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-31",
+          "id": "distribuidora-35",
           "name": "Restablecer contraseña de empleado",
           "event": [
             {
@@ -970,7 +1115,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-32",
+          "id": "distribuidora-36",
           "name": "Token anterior tras restablecer (rechazado)",
           "event": [
             {
@@ -996,7 +1141,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-33",
+          "id": "distribuidora-37",
           "name": "Login del cajero con la contraseña temporal",
           "event": [
             {
@@ -1033,7 +1178,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-34",
+          "id": "distribuidora-38",
           "name": "Cambiar mi contraseña (empleado)",
           "event": [
             {
@@ -1075,7 +1220,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-35",
+          "id": "distribuidora-39",
           "name": "Desactivarse a sí mismo (rechazado)",
           "event": [
             {
@@ -1114,7 +1259,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-36",
+          "id": "distribuidora-40",
           "name": "Desactivar empleado",
           "event": [
             {
@@ -1154,7 +1299,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-37",
+          "id": "distribuidora-41",
           "name": "Token de empleado desactivado (rechazado)",
           "event": [
             {
@@ -1180,7 +1325,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-38",
+          "id": "distribuidora-42",
           "name": "Login de empleado desactivado (rechazado)",
           "event": [
             {
@@ -1215,7 +1360,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-39",
+          "id": "distribuidora-43",
           "name": "Crear empleado",
           "event": [
             {
@@ -1255,7 +1400,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-40",
+          "id": "distribuidora-44",
           "name": "Listar empleados",
           "event": [
             {
@@ -1285,11 +1430,11 @@
       ]
     },
     {
-      "id": "distribuidora-47",
+      "id": "distribuidora-51",
       "name": "6. Productos",
       "item": [
         {
-          "id": "distribuidora-42",
+          "id": "distribuidora-46",
           "name": "Crear producto",
           "event": [
             {
@@ -1332,7 +1477,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-43",
+          "id": "distribuidora-47",
           "name": "Crear variante (talla L)",
           "event": [
             {
@@ -1375,7 +1520,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-44",
+          "id": "distribuidora-48",
           "name": "Listar productos",
           "event": [
             {
@@ -1396,7 +1541,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-45",
+          "id": "distribuidora-49",
           "name": "Historial de producto",
           "event": [
             {
@@ -1423,7 +1568,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-46",
+          "id": "distribuidora-50",
           "name": "Eliminar categoria en uso (rechazado)",
           "event": [
             {
@@ -1451,11 +1596,11 @@
       ]
     },
     {
-      "id": "distribuidora-57",
+      "id": "distribuidora-61",
       "name": "7. Inventario",
       "item": [
         {
-          "id": "distribuidora-48",
+          "id": "distribuidora-52",
           "name": "Crear registro de inventario",
           "event": [
             {
@@ -1498,7 +1643,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-49",
+          "id": "distribuidora-53",
           "name": "Crear inventario de la variante",
           "event": [
             {
@@ -1538,7 +1683,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-50",
+          "id": "distribuidora-54",
           "name": "Listar inventario",
           "event": [
             {
@@ -1564,7 +1709,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-51",
+          "id": "distribuidora-55",
           "name": "Stock global",
           "event": [
             {
@@ -1590,7 +1735,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-52",
+          "id": "distribuidora-56",
           "name": "Inventario de una sucursal",
           "event": [
             {
@@ -1616,7 +1761,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-53",
+          "id": "distribuidora-57",
           "name": "Dar de baja stock (ajuste)",
           "event": [
             {
@@ -1657,7 +1802,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-54",
+          "id": "distribuidora-58",
           "name": "Ajuste con stock desactualizado (rechazado)",
           "event": [
             {
@@ -1696,7 +1841,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-55",
+          "id": "distribuidora-59",
           "name": "Ajuste que sube stock (rechazado)",
           "event": [
             {
@@ -1735,7 +1880,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-56",
+          "id": "distribuidora-60",
           "name": "Eliminar sucursal con historial (rechazado)",
           "event": [
             {
@@ -1763,11 +1908,11 @@
       ]
     },
     {
-      "id": "distribuidora-63",
+      "id": "distribuidora-67",
       "name": "8. Pedidos",
       "item": [
         {
-          "id": "distribuidora-58",
+          "id": "distribuidora-62",
           "name": "Crear pedido / venta",
           "event": [
             {
@@ -1815,7 +1960,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-59",
+          "id": "distribuidora-63",
           "name": "Listar pedidos",
           "event": [
             {
@@ -1841,7 +1986,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-60",
+          "id": "distribuidora-64",
           "name": "Obtener pedido por id",
           "event": [
             {
@@ -1867,7 +2012,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-61",
+          "id": "distribuidora-65",
           "name": "ENTREGADO desde PENDIENTE (rechazado)",
           "event": [
             {
@@ -1907,7 +2052,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-62",
+          "id": "distribuidora-66",
           "name": "Historial de pedido",
           "event": [
             {
@@ -1935,11 +2080,11 @@
       ]
     },
     {
-      "id": "distribuidora-68",
+      "id": "distribuidora-72",
       "name": "9. Detalle Pedido",
       "item": [
         {
-          "id": "distribuidora-64",
+          "id": "distribuidora-68",
           "name": "Crear detalle de pedido",
           "event": [
             {
@@ -1985,7 +2130,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-65",
+          "id": "distribuidora-69",
           "name": "Crear detalle temporal",
           "event": [
             {
@@ -2031,7 +2176,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-66",
+          "id": "distribuidora-70",
           "name": "Eliminar detalle temporal",
           "event": [
             {
@@ -2061,7 +2206,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-67",
+          "id": "distribuidora-71",
           "name": "Listar detalles de pedido",
           "event": [
             {
@@ -2089,11 +2234,11 @@
       ]
     },
     {
-      "id": "distribuidora-73",
+      "id": "distribuidora-81",
       "name": "10. Pagos",
       "item": [
         {
-          "id": "distribuidora-69",
+          "id": "distribuidora-73",
           "name": "Registrar pago",
           "event": [
             {
@@ -2131,12 +2276,12 @@
               }
             },
             "url": "{{baseUrl}}/api/pagos",
-            "description": "Requiere rol CAJERO o ADMIN y pedido PENDIENTE; el monto no puede superar el saldo pendiente (usa {{total_pedido}}, capturado de las requests anteriores). metodo_pago debe ser 'STRIPE' o 'PAYPAL' (unicos valores del ENUM en app/models/pago.model.js). Se usa PAYPAL para no depender de la API real de Stripe: queda PENDIENTE hasta 'Confirmar pago'. Con 'STRIPE' se crea un PaymentIntent real y lo confirma el webhook."
+            "description": "Requiere rol CAJERO o ADMIN y pedido PENDIENTE; el monto no puede superar el saldo pendiente (usa {{total_pedido}}, capturado de las requests anteriores). metodo_pago: EFECTIVO o TARJETA (terminal POS; nacen COMPLETADOS, TARJETA acepta 'referencia' del voucher), PAYPAL (queda PENDIENTE hasta 'Confirmar pago') o STRIPE (PaymentIntent; lo usa la tienda en línea). Aquí se usa PAYPAL para mostrar la confirmación."
           },
           "response": []
         },
         {
-          "id": "distribuidora-70",
+          "id": "distribuidora-74",
           "name": "Confirmar pago",
           "event": [
             {
@@ -2164,7 +2309,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-71",
+          "id": "distribuidora-75",
           "name": "Anular pago pendiente (referencia)",
           "event": [
             {
@@ -2191,7 +2336,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-72",
+          "id": "distribuidora-76",
           "name": "Listar pagos",
           "event": [
             {
@@ -2215,16 +2360,156 @@
             "url": "{{baseUrl}}/api/pagos"
           },
           "response": []
+        },
+        {
+          "id": "distribuidora-77",
+          "name": "Venta de mostrador para cobrar en efectivo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Venta creada\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.pedido && body.pedido.id_pedido;",
+                  "if (value) pm.collectionVariables.set(\"id_pedido_efectivo\", value);",
+                  "if (body.pedido) pm.collectionVariables.set(\"total_efectivo\", Number(body.pedido.total));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_cliente\": \"{{id_cliente}}\",\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"detalles\": [\n    {\n      \"id_producto\": \"{{id_producto}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/pedidos"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-78",
+          "name": "Cobrar en efectivo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Efectivo por el total: el pedido queda pagado al instante\", () => pm.expect(pm.response.json().estado_pedido).to.equal(\"PROCESADO\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metodo_pago\": \"EFECTIVO\",\n  \"monto\": {{total_efectivo}},\n  \"id_pedido\": \"{{id_pedido_efectivo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/pagos",
+            "description": "El efectivo y la tarjeta en terminal (POS) se registran COMPLETADOS: el cajero recibió el dinero en el momento."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-79",
+          "name": "Detalle del pedido con saldos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"Origen mostrador y saldo 0\", () => { pm.expect(p.origen).to.equal(\"MOSTRADOR\"); pm.expect(p.saldo).to.equal(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos/{{id_pedido_efectivo}}",
+            "description": "Incluye origen (TIENDA/MOSTRADOR), vendedor, líneas, pagos, devoluciones y los saldos pagado, por_confirmar, saldo y por_cobrar."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-80",
+          "name": "Listar pedidos de mostrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pedidos?origen=MOSTRADOR",
+            "description": "Filtros: estado, id_cliente, id_sucursal, origen (TIENDA o MOSTRADOR), desde y hasta (AAAA-MM-DD)."
+          },
+          "response": []
         }
       ]
     },
     {
-      "id": "distribuidora-78",
+      "id": "distribuidora-86",
       "name": "11. Estados del pedido",
       "description": "Maquina de estados: PENDIENTE (de pago) -> PROCESADO (pagado) -> ENVIADO -> ENTREGADO; PENDIENTE -> CANCELADO (devuelve el stock). ENTREGADO y CANCELADO son finales.",
       "item": [
         {
-          "id": "distribuidora-74",
+          "id": "distribuidora-82",
           "name": "Agregar producto a pedido pagado (rechazado)",
           "event": [
             {
@@ -2263,7 +2548,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-75",
+          "id": "distribuidora-83",
           "name": "ENTREGADO desde PROCESADO (rechazado)",
           "event": [
             {
@@ -2302,7 +2587,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-76",
+          "id": "distribuidora-84",
           "name": "Marcar ENVIADO",
           "event": [
             {
@@ -2341,7 +2626,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-77",
+          "id": "distribuidora-85",
           "name": "Marcar ENTREGADO",
           "event": [
             {
@@ -2383,11 +2668,11 @@
       ]
     },
     {
-      "id": "distribuidora-81",
+      "id": "distribuidora-89",
       "name": "12. Reportes",
       "item": [
         {
-          "id": "distribuidora-79",
+          "id": "distribuidora-87",
           "name": "Historial de ventas",
           "event": [
             {
@@ -2413,7 +2698,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-80",
+          "id": "distribuidora-88",
           "name": "Stock critico",
           "event": [
             {
@@ -2442,11 +2727,11 @@
       ]
     },
     {
-      "id": "distribuidora-92",
+      "id": "distribuidora-100",
       "name": "13. Devoluciones",
       "item": [
         {
-          "id": "distribuidora-82",
+          "id": "distribuidora-90",
           "name": "Crear solicitud de devolucion",
           "event": [
             {
@@ -2489,7 +2774,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-83",
+          "id": "distribuidora-91",
           "name": "Crear solicitud de cambio de talla/variante",
           "event": [
             {
@@ -2528,7 +2813,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-84",
+          "id": "distribuidora-92",
           "name": "Listar devoluciones",
           "event": [
             {
@@ -2554,7 +2839,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-85",
+          "id": "distribuidora-93",
           "name": "Obtener devolucion por id",
           "event": [
             {
@@ -2585,7 +2870,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-86",
+          "id": "distribuidora-94",
           "name": "Aprobar devolucion",
           "event": [
             {
@@ -2611,7 +2896,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-87",
+          "id": "distribuidora-95",
           "name": "Rechazar devolucion",
           "event": [
             {
@@ -2638,7 +2923,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-88",
+          "id": "distribuidora-96",
           "name": "Recibir devolucion",
           "event": [
             {
@@ -2665,7 +2950,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-89",
+          "id": "distribuidora-97",
           "name": "Revisar devolucion",
           "event": [
             {
@@ -2705,7 +2990,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-90",
+          "id": "distribuidora-98",
           "name": "Reintegrar devolucion a inventario",
           "event": [
             {
@@ -2732,7 +3017,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-91",
+          "id": "distribuidora-99",
           "name": "Procesar cambio de talla/variante",
           "event": [
             {
@@ -2761,11 +3046,11 @@
       ]
     },
     {
-      "id": "distribuidora-95",
+      "id": "distribuidora-103",
       "name": "14. Auditoría",
       "item": [
         {
-          "id": "distribuidora-93",
+          "id": "distribuidora-101",
           "name": "Registrar auditoria manual",
           "event": [
             {
@@ -2804,7 +3089,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-94",
+          "id": "distribuidora-102",
           "name": "Listar auditoria",
           "event": [
             {
@@ -2832,12 +3117,12 @@
       ]
     },
     {
-      "id": "distribuidora-97",
+      "id": "distribuidora-105",
       "name": "15. Webhook (Stripe)",
       "description": "Endpoint de uso interno de Stripe. Se deja documentado por completitud, no para ejecutarse tal cual desde Postman.",
       "item": [
         {
-          "id": "distribuidora-96",
+          "id": "distribuidora-104",
           "name": "Stripe webhook (referencia, no ejecutar desde Postman)",
           "event": [
             {
@@ -2875,12 +3160,12 @@
       ]
     },
     {
-      "id": "distribuidora-112",
+      "id": "distribuidora-123",
       "name": "16. Tienda en línea (cliente)",
       "description": "Endpoints de la tienda para clientes (app tienda/). Usan el token de cliente {{token_cliente}}, distinto del token de empleado.",
       "item": [
         {
-          "id": "distribuidora-98",
+          "id": "distribuidora-106",
           "name": "Registro de cliente",
           "event": [
             {
@@ -2927,7 +3212,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-99",
+          "id": "distribuidora-107",
           "name": "Login de cliente",
           "event": [
             {
@@ -2964,7 +3249,115 @@
           "response": []
         },
         {
-          "id": "distribuidora-100",
+          "id": "distribuidora-108",
+          "name": "Registro con correo de cliente de mostrador (rechazado)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Indica activar la cuenta con el código de caja\", () => pm.expect(pm.response.json().message).to.match(/caja/));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Maria\",\n  \"apellido\": \"Lopez\",\n  \"email\": \"{{cliente_mostrador_email}}\",\n  \"password\": \"Mostrador123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/auth/registro"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-109",
+          "name": "Activar cuenta de mostrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Devuelve sesión del mismo cliente\", () => pm.expect(pm.response.json().cliente.id_cliente).to.equal(Number(pm.collectionVariables.get(\"id_cliente\"))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{cliente_mostrador_email}}\",\n  \"codigo\": \"{{codigo_web}}\",\n  \"password\": \"Mostrador123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/auth/activar",
+            "description": "El cliente de mostrador (folder 2) crea su contraseña con el código que le dio caja. Conserva su ficha y su historial. El código es de un solo uso."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-110",
+          "name": "Reusar el código (rechazado)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{cliente_mostrador_email}}\",\n  \"codigo\": \"{{codigo_web}}\",\n  \"password\": \"Otra123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/auth/activar"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-111",
           "name": "Token de cliente en el panel (rechazado)",
           "event": [
             {
@@ -2990,7 +3383,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-101",
+          "id": "distribuidora-112",
           "name": "Catálogo (público)",
           "event": [
             {
@@ -3012,7 +3405,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-102",
+          "id": "distribuidora-113",
           "name": "Detalle de prenda (público)",
           "event": [
             {
@@ -3034,7 +3427,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-103",
+          "id": "distribuidora-114",
           "name": "Perfil del cliente",
           "event": [
             {
@@ -3060,7 +3453,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-104",
+          "id": "distribuidora-115",
           "name": "Crear pedido (checkout)",
           "event": [
             {
@@ -3103,7 +3496,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-105",
+          "id": "distribuidora-116",
           "name": "Mis pedidos",
           "event": [
             {
@@ -3129,7 +3522,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-106",
+          "id": "distribuidora-117",
           "name": "Detalle de mi pedido",
           "event": [
             {
@@ -3155,7 +3548,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-107",
+          "id": "distribuidora-118",
           "name": "Iniciar pago con tarjeta",
           "event": [
             {
@@ -3182,7 +3575,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-108",
+          "id": "distribuidora-119",
           "name": "Sincronizar pago",
           "event": [
             {
@@ -3209,7 +3602,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-109",
+          "id": "distribuidora-120",
           "name": "Crear pedido para cancelar",
           "event": [
             {
@@ -3251,7 +3644,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-110",
+          "id": "distribuidora-121",
           "name": "Cancelar pedido pendiente",
           "event": [
             {
@@ -3278,7 +3671,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-111",
+          "id": "distribuidora-122",
           "name": "Mis devoluciones",
           "event": [
             {
@@ -3419,6 +3812,22 @@
     {
       "key": "token_cajero",
       "value": ""
+    },
+    {
+      "key": "cliente_mostrador_email",
+      "value": ""
+    },
+    {
+      "key": "codigo_web",
+      "value": ""
+    },
+    {
+      "key": "id_pedido_efectivo",
+      "value": "1"
+    },
+    {
+      "key": "total_efectivo",
+      "value": "0"
     }
   ]
 }

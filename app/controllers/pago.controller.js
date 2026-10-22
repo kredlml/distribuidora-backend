@@ -5,15 +5,22 @@ const { stripe, STRIPE_SIMULADO } = require("../config/stripe.config");
 const { registrarAuditoria } = require("../utils/auditoria");
 const { errorHttp, normalizarMonto, totalPagado, totalComprometido, procesarPedidoSiEstaPagado, registrarCobroExitoso } = require("../utils/facturacion");
 
+const METODOS_PAGO = ['STRIPE', 'PAYPAL', 'EFECTIVO', 'TARJETA'];
+// Cobros presenciales: el dinero se recibe en caja, el pago nace COMPLETADO.
+const METODOS_PRESENCIALES = ['EFECTIVO', 'TARJETA'];
+
 exports.create = async (req, res) => {
 
   const t = await db.sequelize.transaction();
 
   try {
-    const { metodo_pago, monto, id_pedido } = req.body || {};
+    const { metodo_pago, monto, id_pedido, referencia } = req.body || {};
 
     if (!metodo_pago || !monto || !id_pedido) {
       throw errorHttp(400, "Método de pago, monto e id_pedido son obligatorios.");
+    }
+    if (!METODOS_PAGO.includes(metodo_pago)) {
+      throw errorHttp(400, `El método de pago debe ser uno de: ${METODOS_PAGO.join(', ')}.`);
     }
     const montoNum = normalizarMonto(monto);
 
@@ -41,6 +48,13 @@ exports.create = async (req, res) => {
     let id_transaccion = null;
     let estado_inicial = 'PENDIENTE';
 
+    if (METODOS_PRESENCIALES.includes(metodo_pago)) {
+      estado_inicial = 'COMPLETADO';
+      // TARJETA: número de autorización o voucher del terminal (opcional), para cuadrar caja.
+      const ref = referencia == null ? '' : String(referencia).trim();
+      if (ref.length > 150) throw errorHttp(400, "La referencia no puede superar los 150 caracteres.");
+      id_transaccion = ref || null;
+    }
 
     if (metodo_pago === 'STRIPE') {
       try {
@@ -70,6 +84,14 @@ exports.create = async (req, res) => {
       id_transaccion_externa: id_transaccion,
       id_pedido: id_pedido
     }, { transaction: t });
+
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: 'PAGO_REGISTRADO',
+      tabla_afectada: 'Pago',
+      registro_afectado_id: nuevoPago.id_pago,
+      detalles: `Pago #${nuevoPago.id_pago} (${metodo_pago}) de ${montoNum.toFixed(2)} registrado ${estado_inicial} para el pedido #${id_pedido}.`
+    }, t);
 
     // Si con este pago el pedido queda cubierto, deja de estar PENDIENTE (pasa a PROCESADO).
     let pedidoActualizado = pedido;
@@ -206,6 +228,47 @@ exports.anular = async (req, res) => {
   } catch (error) {
     await t.rollback();
     res.status(error.status || 500).send({ message: error.message || "Error al anular el pago." });
+  }
+};
+
+// PUT /api/pagos/:id/devolver — el cajero devuelve al cliente un cobro presencial (EFECTIVO o
+// TARJETA en POS) de un pedido que sigue PENDIENTE: el cliente pagó una parte y se fue, o el cobro
+// se registró por error. El pago queda REEMBOLSADO (ya no cuenta como pagado) y, sin pagos, el
+// pedido se puede cancelar para liberar el stock. Un pedido ya pagado (PROCESADO) no se toca aquí:
+// lo posterior se gestiona como devolución. Orden de bloqueo: Pago y luego Pedido.
+exports.devolver = async (req, res) => {
+  const t = await db.sequelize.transaction();
+  try {
+    const pago = await Pago.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!pago) {
+      throw errorHttp(404, `No se encontró el pago con id=${req.params.id}.`);
+    }
+    if (!METODOS_PRESENCIALES.includes(pago.metodo_pago)) {
+      throw errorHttp(400, "Solo se devuelven desde caja los cobros en efectivo o con tarjeta en terminal (POS).");
+    }
+    if (pago.estado_pago !== 'COMPLETADO') {
+      throw errorHttp(400, `Solo se puede devolver un pago COMPLETADO (estado actual: ${pago.estado_pago}).`);
+    }
+    const pedido = await Pedido.findByPk(pago.id_pedido, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!pedido || pedido.estado !== 'PENDIENTE') {
+      throw errorHttp(400, `Solo se devuelven pagos de pedidos PENDIENTES (estado actual: ${pedido ? pedido.estado : 'inexistente'}). Un pedido pagado se gestiona como devolución.`);
+    }
+
+    pago.estado_pago = 'REEMBOLSADO';
+    await pago.save({ transaction: t });
+    await registrarAuditoria({
+      id_empleado: req.empleadoId,
+      accion: 'PAGO_DEVUELTO',
+      tabla_afectada: 'Pago',
+      registro_afectado_id: pago.id_pago,
+      detalles: `Pago #${pago.id_pago} (${pago.metodo_pago}) de ${Number(pago.monto).toFixed(2)} devuelto al cliente; pedido #${pago.id_pedido} sigue PENDIENTE.`
+    }, t);
+
+    await t.commit();
+    res.status(200).send({ message: `Pago de ${Number(pago.monto).toFixed(2)} devuelto. El pedido sigue pendiente.`, pago });
+  } catch (error) {
+    await t.rollback();
+    res.status(error.status || 500).send({ message: error.status ? error.message : "Error al devolver el pago." });
   }
 };
 

@@ -16,11 +16,16 @@ export default function Rail() {
   const enlaces = [
     ["/", "Devoluciones", "list", pathname === "/" || pathname.startsWith("/devolucion")],
     ["/nueva", "Nueva solicitud", "plus", pathname === "/nueva"],
+    ["/pedidos", "Pedidos", "receipt", pathname.startsWith("/pedidos")],
+  ];
+  if (PERMISOS.clientes.includes(rol)) enlaces.push(["/clientes", "Clientes", "user", pathname === "/clientes"]);
+  enlaces.push(
     ["/trazabilidad", "Trazabilidad", "route", pathname.startsWith("/trazabilidad")],
     ["/inventario", "Inventario", "box", pathname === "/inventario"],
-  ];
+  );
   if (PERMISOS.catalogo.includes(rol)) enlaces.push(["/catalogo", "Catálogo y stock", "tag", pathname === "/catalogo"]);
   if (PERMISOS.sucursales.includes(rol)) enlaces.push(["/sucursales", "Sucursales", "store", pathname === "/sucursales"]);
+  if (PERMISOS.proveedores.includes(rol)) enlaces.push(["/proveedores", "Proveedores", "truck", pathname === "/proveedores"]);
   if (PERMISOS.empleados.includes(rol)) enlaces.push(["/empleados", "Empleados", "users", pathname === "/empleados"]);
 
   return (

@@ -8,6 +8,12 @@ export const PERMISOS = {
   // Sucursales: ver y ajustar stock ADMIN/BODEGUERO; crear, editar y eliminar sucursales solo ADMIN.
   sucursales: ["ADMIN", "BODEGUERO"], ajustarStock: ["ADMIN", "BODEGUERO"], gestionarSucursales: ["ADMIN"],
   empleados: ["ADMIN"],
+  // Pedidos: todos los ven; vender y cobrar es de caja; despachar y entregar, de bodega
+  // (igual que PUESTOS_POR_ESTADO del backend). Clientes: caja. Proveedores: bodega.
+  vender: ["ADMIN", "CAJERO"], cobrar: ["ADMIN", "CAJERO"],
+  CANCELADO: ["ADMIN", "CAJERO"], ENVIADO: ["ADMIN", "BODEGUERO"], ENTREGADO: ["ADMIN", "BODEGUERO"],
+  clientes: ["ADMIN", "CAJERO"], activarCliente: ["ADMIN"],
+  proveedores: ["ADMIN", "BODEGUERO"], eliminarProveedor: ["ADMIN"],
 };
 
 export const ROLES = ["ADMIN", "CAJERO", "BODEGUERO"];

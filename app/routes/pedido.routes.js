@@ -2,6 +2,7 @@ module.exports = app => {
     const pedidos = require("../controllers/pedido.controller.js");
     const { verificarToken, isCajero } = require("../middlewares/authJwt.js");
     var router = require("express").Router();
+    router.param("id", require("../middlewares/validarId.js"));
 
     
     router.put("/:id/estado", verificarToken, pedidos.actualizarEstado);

@@ -18,6 +18,19 @@ export const MOTIVOS_AJUSTE = [
   ["DANO", "Daño en bodega"], ["DESCARTE", "Descarte de prenda dañada o defectuosa"], ["OTRO", "Otro motivo (explícalo)"],
 ];
 
+export const ESTADOS_PEDIDO = {
+  PENDIENTE: "Pendiente de pago", PROCESADO: "Pagado", ENVIADO: "Enviado", ENTREGADO: "Entregado", CANCELADO: "Cancelado",
+};
+export const TONO_PEDIDO = { ENTREGADO: "ok", CANCELADO: "bad" };
+export const ORIGENES = [["TIENDA", "Tienda en línea"], ["MOSTRADOR", "Mostrador"]];
+export const METODOS_PAGO = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta (POS)", PAYPAL: "PayPal", STRIPE: "Tarjeta en línea" };
+export const ESTADOS_PAGO = { PENDIENTE: "Por confirmar", COMPLETADO: "Completado", FALLIDO: "Anulado", REEMBOLSADO: "Devuelto" };
+// Siguiente paso manual de cada estado (PROCESADO lo pone el sistema al cubrirse el pago).
+export const SIGUIENTE_ESTADO = {
+  PROCESADO: { estado: "ENVIADO", boton: "Marcar como enviado", texto: "El pedido salió de la sucursal hacia el cliente." },
+  ENVIADO: { estado: "ENTREGADO", boton: "Marcar como entregado", texto: "El cliente recibió el pedido. Desde aquí puede pedir cambios o devoluciones." },
+};
+
 export const PUESTOS = [["ADMIN", "Administrador"], ["CAJERO", "Cajero"], ["BODEGUERO", "Bodeguero"]];
 
 export const ACCION = {

@@ -2,6 +2,7 @@ module.exports = app => {
   const categorias = require("../controllers/categoria.controller.js");
   const { verificarToken, isBodeguero, isAdmin } = require("../middlewares/authJwt.js");
   var router = require("express").Router();
+  router.param("id", require("../middlewares/validarId.js"));
   // Alta y edición de tipos de prenda: ADMIN o BODEGUERO. Eliminar: solo ADMIN (igual que las prendas).
   router.post("/", [verificarToken, isBodeguero], categorias.create);
   router.put("/:id", [verificarToken, isBodeguero], categorias.update);
