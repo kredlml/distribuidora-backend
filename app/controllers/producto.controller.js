@@ -1,6 +1,7 @@
 const db = require("../models");
 const Producto = db.producto;
 const { registrarAuditoria } = require("../utils/auditoria");
+const { sucursalDe } = require("../utils/alcance");
 
 // imagen_url: vacío/null = sin imagen; si viene, debe ser una URL http(s) de hasta 500 caracteres.
 // Devuelve { valor } o { error }.
@@ -85,10 +86,18 @@ exports.historial = async (req, res) => {
       return res.status(404).send({ message: `No se encontró el Producto con id=${id}.` });
     }
 
+    // Fuera del DISTRITAL, solo los movimientos de la propia sucursal: los de su inventario
+    // (ingresos, bajas, reintegros) y los de sus pedidos (ventas, cancelaciones, devoluciones).
+    const s = sucursalDe(req);
+    const { Op } = db.Sequelize;
+    const where = { id_producto: id };
+    if (s !== null) where[Op.or] = [{ '$Inventario.id_sucursal$': s }, { '$Pedido.id_sucursal$': s }];
     const movimientos = await db.movimiento_inventario.findAll({
-      where: { id_producto: id },
+      where,
       include: [
-        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] },
+        { model: db.inventario, attributes: ['id_sucursal'], required: false },
+        { model: db.pedido, attributes: ['id_sucursal'], required: false }
       ],
       order: [['id_movimiento', 'ASC']]
     });

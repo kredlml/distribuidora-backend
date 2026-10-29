@@ -84,9 +84,15 @@ export default function Pedido() {
           )}
           {p.estado === "ENTREGADO" && (
             <section className="card">
-              <h2>¿Algo no quedó bien?</h2>
-              <p className="muted sm">Puedes pedir un cambio de talla o color, o devolver prendas de este pedido.</p>
-              <Link className="btn mini" to={`/pedidos/${p.id_pedido}/devolucion`}>Solicitar cambio o devolución</Link>
+              <h2>{devoluciones.length ? "Tu solicitud de cambio o devolución" : "¿Algo no quedó bien?"}</h2>
+              {p.devolucion_permitida ? (
+                <>
+                  <p className="muted sm">Puedes pedir un cambio de talla o color, o devolver prendas de este pedido. Es <b>una sola solicitud</b> y tienes hasta el <b>{fecha(p.devolucion_vence, true)}</b> (24 horas desde la entrega).</p>
+                  <Link className="btn mini" to={`/pedidos/${p.id_pedido}/devolucion`}>Solicitar cambio o devolución</Link>
+                </>
+              ) : !devoluciones.length && (
+                <p className="muted sm">El plazo para pedir un cambio o una devolución (24 horas desde la entrega) ya venció.</p>
+              )}
               {devoluciones.length > 0 && (
                 <div className="sec">
                   {devoluciones.map((d) => (

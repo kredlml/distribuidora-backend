@@ -132,7 +132,7 @@ const auth = folder(
       },
       tests: `pm.test("201 con la BD sin empleados; 403 si ya existen (se usa el ADMIN existente)", () => pm.expect(pm.response.code).to.be.oneOf([201, 403]));`,
       description:
-        "Solo funciona con la base de datos SIN empleados: ese primer empleado queda siempre como ADMIN (ignora el puesto). Si ya hay empleados responde 403: en ese caso pon en las variables de coleccion admin_email/admin_password las credenciales de un ADMIN existente.",
+        "Solo funciona con la base de datos SIN empleados: ese primer empleado queda siempre como DISTRITAL (gerente distrital: todas las sucursales), sin sucursal, e ignora el puesto. Si ya hay empleados responde 403: en ese caso pon en las variables de coleccion admin_email/admin_password las credenciales de tu cuenta DISTRITAL.",
     }),
     req("Login", "POST", "/api/auth/login", {
       body: { email: "{{admin_email}}", password: "{{admin_password}}" },
@@ -168,7 +168,7 @@ const sucursales = folder("1. Sucursales", [
     auth: true,
     body: { nombre: "Sucursal Centro", direccion: "5ta avenida 10-20", ciudad: "Guatemala", telefono: "22334455", activo: true },
     tests: captureId("id_sucursal", "body.id_sucursal", "Sucursal creada"),
-    description: "Requiere rol ADMIN.",
+    description: "Requiere rol DISTRITAL (abrir, editar y cerrar sucursales es del gerente distrital).",
   }),
   req("Listar sucursales", "GET", "/api/sucursales", {
     tests: expectStatus(200),
@@ -178,7 +178,7 @@ const sucursales = folder("1. Sucursales", [
     auth: true,
     body: { telefono: "22339999", activo: true },
     tests: expectStatus(200),
-    description: "Requiere rol ADMIN. Solo aplica nombre, direccion, ciudad, telefono y activo (boolean); cualquier otro campo se ignora.",
+    description: "Requiere rol DISTRITAL. Solo aplica nombre, direccion, ciudad, telefono y activo (boolean); cualquier otro campo se ignora.",
   }),
   req("Actualizar sucursal sin token (rechazado)", "PUT", "/api/sucursales/{{id_sucursal}}", {
     body: { activo: false },
@@ -192,7 +192,7 @@ const sucursales = folder("1. Sucursales", [
   req("Eliminar sucursal sin historial", "DELETE", "/api/sucursales/{{id_sucursal_temporal}}", {
     auth: true,
     tests: expectStatus(200),
-    description: "Requiere rol ADMIN. Solo se elimina si nunca tuvo empleados, inventario ni pedidos; si no, responde 409 y hay que desactivarla (activo=false). Ver 'Eliminar sucursal con historial' en el folder 7.",
+    description: "Requiere rol DISTRITAL. Solo se elimina si nunca tuvo empleados, clientes registrados, inventario ni pedidos; si no, responde 409 y hay que desactivarla (activo=false). Ver 'Eliminar sucursal con historial' en el folder 7.",
   }),
 ]);
 
@@ -280,7 +280,7 @@ const categorias = folder("4. Categorías", [
     auth: true,
     body: { descripcion: "Camisas de vestir, casuales y de lino" },
     tests: expectStatus(200),
-    description: "Requiere rol BODEGUERO o ADMIN. Acepta nombre (único, sin distinguir mayúsculas) y descripcion.",
+    description: "Requiere rol DISTRITAL (el catálogo es único para todas las sucursales). Acepta nombre (único, sin distinguir mayúsculas) y descripcion.",
   }),
   req("Crear categoria temporal", "POST", "/api/categorias", {
     auth: true,
@@ -290,7 +290,7 @@ const categorias = folder("4. Categorías", [
   req("Eliminar categoria sin prendas", "DELETE", "/api/categorias/{{id_categoria_temporal}}", {
     auth: true,
     tests: expectStatus(200),
-    description: "Requiere rol ADMIN. Si alguna prenda usa el tipo responde 409 (ver 'Eliminar categoria en uso' en el folder 6).",
+    description: "Requiere rol DISTRITAL. Si alguna prenda usa el tipo responde 409 (ver 'Eliminar categoria en uso' en el folder 6).",
   }),
 ]);
 
@@ -323,13 +323,13 @@ if (r.token) pm.collectionVariables.set("token_cajero", r.token);`,
     body: { puesto: "BODEGUERO", apellido: "Bodega" },
     tests: `${expectStatus(200)}
 pm.test("Puesto actualizado", () => pm.expect(pm.response.json().puesto).to.equal("BODEGUERO"));`,
-    description: "Requiere rol ADMIN. Campos: nombre, apellido, email, puesto, id_sucursal, activo. El cambio de puesto aplica al instante (los roles se leen de la base en cada petición).",
+    description: "DISTRITAL: a cualquier empleado. ADMIN: solo cajeros y bodegueros de su sucursal. Campos: nombre, apellido, email, puesto, id_sucursal, activo. El cambio de puesto aplica al instante (los roles se leen de la base en cada petición).",
   }),
   req("Restablecer contraseña de empleado", "PUT", "/api/empleados/{{id_cajero}}/password", {
     auth: true,
     body: { password: "Temporal123" },
     tests: expectStatus(200),
-    description: "Requiere rol ADMIN. Asigna una contraseña temporal y cierra las sesiones abiertas de ese empleado; él la cambia con PUT /api/auth/password.",
+    description: "DISTRITAL: a cualquiera; ADMIN: a cajeros y bodegueros de su sucursal. Asigna una contraseña temporal y cierra las sesiones abiertas de ese empleado; él la cambia con PUT /api/auth/password.",
   }),
   req("Token anterior tras restablecer (rechazado)", "GET", "/api/auth/yo", {
     auth: "token_cajero",
@@ -381,7 +381,7 @@ if (r.token) pm.collectionVariables.set("token_cajero", r.token);`,
       activo: true,
     },
     tests: expectStatus(201, "Empleado creado"),
-    description: "Requiere rol ADMIN. Ficha de empleado sin contraseña (no puede iniciar sesion; para eso usar 'Registrar cajero'). email con {{$timestamp}} porque la columna email de Empleado es unica en la base de datos (aunque el modelo Sequelize no lo declare) - un valor fijo solo funciona la primera vez que se corre la coleccion.",
+    description: "DISTRITAL o ADMIN (este solo cajeros/bodegueros de su sucursal). Ficha de empleado sin contraseña (no puede iniciar sesion; para eso usar 'Registrar cajero'). email con {{$timestamp}} porque la columna email de Empleado es unica en la base de datos (aunque el modelo Sequelize no lo declare) - un valor fijo solo funciona la primera vez que se corre la coleccion.",
   }),
   req("Listar empleados", "GET", "/api/empleados", {
     auth: true,
@@ -409,7 +409,7 @@ const productos = folder("6. Productos", [
       activo: true,
     },
     tests: captureId("id_producto", "body.id_producto", "Producto creado"),
-    description: "Requiere rol BODEGUERO o ADMIN.",
+    description: "Requiere rol DISTRITAL: el catálogo es uno solo para todas las sucursales.",
   }),
   req("Crear variante (talla L)", "POST", "/api/productos", {
     auth: true,
@@ -450,7 +450,7 @@ const inventario = folder("7. Inventario", [
     auth: true,
     body: { id_producto: "{{id_producto}}", id_sucursal: "{{id_sucursal}}", cantidad: 50, lote: "L-2026-001", estado: "DISPONIBLE" },
     tests: captureId("id_inventario", "body.id_inventario", "Inventario registrado"),
-    description: "Requiere rol BODEGUERO o ADMIN.",
+    description: "BODEGUERO o ADMIN de esa sucursal (el DISTRITAL, en cualquiera).",
   }),
   req("Crear inventario de la variante", "POST", "/api/inventario", {
     auth: true,
@@ -674,6 +674,13 @@ const reportes = folder("12. Reportes", [
     tests: expectStatus(200),
     description: "Suma el stock DISPONIBLE por producto/sucursal y lo compara contra Producto.stock_minimo. Con los datos de esta coleccion normalmente da un arreglo vacio (el stock creado supera el minimo); para verlo con resultados, crea un producto con stock_minimo alto o registra poco inventario.",
   }),
+  req("Resumen de ventas (tablero de gerentes)", "GET", "/api/reportes/resumen", {
+    auth: true,
+    tests: `${expectStatus(200)}
+const d = pm.response.json();
+pm.test("Trae indicadores y desgloses", () => { pm.expect(d.kpis).to.have.property("ventas"); pm.expect(d.por_prenda).to.be.an("array"); pm.expect(d.por_sucursal).to.be.an("array"); });`,
+    description: "ADMIN (su sucursal) o DISTRITAL (todas, o una con ?id_sucursal=N). Parámetros desde/hasta (AAAA-MM-DD, días de Guatemala; por defecto hoy, máximo un año). Ventas = pedidos pagados (PROCESADO, ENVIADO, ENTREGADO). Devuelve kpis (ventas, pedidos, unidades, ticket promedio, ventas de hoy, por cobrar, cancelados, devoluciones y cambios) y desgloses por sucursal, día, prenda, tipo, método de pago, origen, vendedor y stock crítico.",
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -694,7 +701,7 @@ const devoluciones = folder("13. Devoluciones", [
     tests: captureId("id_devolucion", "body.devolucion && body.devolucion.id_devolucion", "Devolucion solicitada"),
     description: "El pedido debe existir, pertenecer a id_cliente y estar en estado ENTREGADO. motivo es un ENUM (DEFECTUOSO, TALLA_INCORRECTA, PRODUCTO_INCORRECTO, DANADO_ENVIO, OTRO) - ver app/models/devolucion.model.js.",
   }),
-  req("Crear solicitud de cambio de talla/variante", "POST", "/api/devoluciones", {
+  req("Segunda solicitud del mismo pedido (rechazada)", "POST", "/api/devoluciones", {
     auth: true,
     body: {
       id_pedido: "{{id_pedido}}",
@@ -704,7 +711,16 @@ const devoluciones = folder("13. Devoluciones", [
       observacion: "Cliente solicita talla mas grande",
       detalles: [{ id_detalle_pedido: "{{id_detalle_pedido}}", cantidad: 1, id_producto_nuevo: "{{id_producto_nuevo}}" }],
     },
-    tests: expectStatus(201),
+    tests: `${expectStatus(400, "400 esperado: solo se permite una solicitud de cambio o devolución por pedido")}
+pm.test("Explica la regla", () => pm.expect(pm.response.json().message).to.match(/solo se permite una/));`,
+    description: "Política: UNA sola solicitud por pedido (aunque la rechacen) y solo dentro de las 24 horas siguientes a la entrega (Pedido.fecha_entrega, se guarda al marcar ENTREGADO). Un cambio de talla se pide en esa misma solicitud.",
+  }),
+  req("Pedido ya no admite solicitudes", "GET", "/api/devoluciones/pedido/{{id_pedido}}/devolvible", {
+    auth: true,
+    tests: `${expectStatus(200)}
+const d = pm.response.json();
+pm.test("permite_devolucion=false por YA_SOLICITADO", () => { pm.expect(d.permite_devolucion).to.equal(false); pm.expect(d.motivo_no_permite).to.equal("YA_SOLICITADO"); });`,
+    description: "Indica si el pedido admite hoy una solicitud (permite_devolucion), el motivo si no (NO_ENTREGADO, YA_SOLICITADO, PLAZO_VENCIDO) y hasta cuándo se puede (plazo_vence).",
   }),
   req("Listar devoluciones", "GET", "/api/devoluciones", {
     auth: true,

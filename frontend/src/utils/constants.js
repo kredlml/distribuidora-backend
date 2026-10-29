@@ -31,11 +31,11 @@ export const SIGUIENTE_ESTADO = {
   ENVIADO: { estado: "ENTREGADO", boton: "Marcar como entregado", texto: "El cliente recibió el pedido. Desde aquí puede pedir cambios o devoluciones." },
 };
 
-export const PUESTOS = [["ADMIN", "Administrador"], ["CAJERO", "Cajero"], ["BODEGUERO", "Bodeguero"]];
+export const PUESTOS = [["DISTRITAL", "Gerente distrital"], ["ADMIN", "Administrador de sucursal"], ["CAJERO", "Cajero"], ["BODEGUERO", "Bodeguero"]];
 
 export const ACCION = {
   aprobar: { boton: "Aprobar", titulo: "Aprobar devolución", texto: "La solicitud pasará a Aprobada y podrá recibirse en bodega.", obs: true, ok: "aprobada" },
-  rechazar: { boton: "Rechazar", titulo: "Rechazar devolución", texto: "La solicitud se cierra y sus prendas dejan de contar como devueltas.", obs: true, ok: "rechazada" },
+  rechazar: { boton: "Rechazar", titulo: "Rechazar devolución", texto: "La solicitud se cierra de forma definitiva: el cliente ya no podrá pedir otro cambio ni devolución de este pedido (solo se permite una solicitud por pedido).", obs: true, ok: "rechazada" },
   recibir: { boton: "Marcar como recibida", titulo: "Recibir prendas", texto: "Confirma que las prendas llegaron físicamente a la sucursal.", obs: true, ok: "recibida" },
   revisar: { boton: "Registrar inspección", titulo: "Inspección de prendas", texto: "Indica el estado de cada prenda y si la devolución se acepta.", obs: true, ok: "inspeccionada" },
   reintegrar: { boton: "Reintegrar a inventario", titulo: "Reintegrar a inventario", texto: "Cada prenda vuelve al inventario según el resultado de su inspección.", obs: false, ok: "reintegrada a inventario" },

@@ -68,16 +68,52 @@ function buscarPorEmail(email, idExcluir, opciones = {}) {
   return db.empleado.findOne({ where, order: [[db.sequelize.literal('"password" IS NULL'), "ASC"], ["id_empleado", "ASC"]], ...opciones });
 }
 
-// ADMIN activos que pueden iniciar sesión (con contraseña), bloqueados para que dos cambios
-// simultáneos no dejen el sistema sin ningún administrador utilizable.
-function adminsActivos(t) {
+// Empleados activos que pueden iniciar sesión (con contraseña), bloqueados para que dos cambios
+// simultáneos no dejen el sistema sin ningún DISTRITAL utilizable ni dejen operar a quien acaba
+// de perder su puesto. Devuelve [{ id_empleado, puesto, id_sucursal }].
+function activosConAcceso(t) {
   return db.empleado.findAll({
     where: { activo: true },
-    attributes: ["id_empleado", "puesto", "password"],
+    attributes: ["id_empleado", "puesto", "password", "id_sucursal"],
     order: [["id_empleado", "ASC"]],
     transaction: t,
     lock: t.LOCK.UPDATE
-  }).then((filas) => filas.filter((e) => puestoDe(e) === "ADMIN" && e.password).map((e) => ({ id_empleado: e.id_empleado })));
+  }).then((filas) => filas.filter((e) => e.password).map((e) => ({ id_empleado: e.id_empleado, puesto: puestoDe(e), id_sucursal: e.id_sucursal })));
+}
+
+// Reglas de quién gestiona a quién:
+//  - DISTRITAL: cualquier puesto en cualquier sucursal. Un DISTRITAL no tiene sucursal; los demás
+//    puestos deben tener una.
+//  - ADMIN (gerente de sucursal): solo cajeros y bodegueros de SU sucursal.
+// `quien` = empleado que hace la operación; `objetivo` = empleado existente (o null en un alta);
+// `datos` = cambios ya validados (se ajustan aquí). Devuelve null o { status, message }.
+const PUESTOS_DE_SUCURSAL = ["CAJERO", "BODEGUERO"];
+function aplicarReglasDeGestion(quien, objetivo, datos) {
+  const puestoQuien = puestoDe(quien);
+  if (puestoQuien === "DISTRITAL") {
+    const puestoFinal = datos.puesto || (objetivo ? puestoDe(objetivo) : "");
+    if (puestoFinal === "DISTRITAL") {
+      datos.id_sucursal = null;
+      return null;
+    }
+    const sucursalFinal = datos.id_sucursal !== undefined ? datos.id_sucursal : objetivo ? objetivo.id_sucursal : null;
+    if (!sucursalFinal) return { status: 400, message: "Asigna una sucursal: solo el puesto DISTRITAL trabaja sin sucursal." };
+    return null;
+  }
+  // ADMIN
+  const propia = quien.id_sucursal;
+  if (!propia) return { status: 403, message: "Tu cuenta no tiene sucursal asignada." };
+  if (objetivo && (Number(objetivo.id_sucursal) !== Number(propia) || !PUESTOS_DE_SUCURSAL.includes(puestoDe(objetivo)))) {
+    return { status: 403, message: "Solo puedes gestionar cajeros y bodegueros de tu sucursal." };
+  }
+  if (datos.puesto !== undefined && !PUESTOS_DE_SUCURSAL.includes(datos.puesto)) {
+    return { status: 403, message: "Como gerente de sucursal solo puedes asignar los puestos CAJERO o BODEGUERO." };
+  }
+  if (datos.id_sucursal !== undefined && Number(datos.id_sucursal) !== Number(propia)) {
+    return { status: 403, message: "Solo puedes asignar empleados a tu sucursal." };
+  }
+  if (!objetivo) datos.id_sucursal = propia;
+  return null;
 }
 
 // JWT del panel. "v" es la versión de sesión del empleado (ver Empleado.token_version).
@@ -95,4 +131,4 @@ function publico(empleado) {
   return datos;
 }
 
-module.exports = { validarPassword, hashPassword, leerDatosEmpleado, buscarPorEmail, adminsActivos, firmarToken, publico };
+module.exports = { validarPassword, hashPassword, leerDatosEmpleado, buscarPorEmail, activosConAcceso, aplicarReglasDeGestion, firmarToken, publico };

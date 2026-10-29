@@ -5,6 +5,7 @@ import { Cargando, ErrorCard } from "../../components/Estado";
 import SearchBox from "../../components/SearchBox";
 import useFetch from "../../hooks/useFetch";
 import * as clientesService from "../../services/clientesService";
+import * as sucursalesService from "../../services/sucursalesService";
 import ClienteDialog from "./ClienteDialog";
 import CodigoWebDialog from "./CodigoWebDialog";
 import "./Clientes.css";
@@ -18,6 +19,7 @@ export default function Clientes() {
   const [q, setQ] = useState("");
   const [dialogo, setDialogo] = useState(null); // { tipo: "nuevo" | "editar" | "codigo", cliente }
   const { data, error, loading, reload } = useFetch(() => clientesService.listar(), []);
+  const sucs = useFetch(() => sucursalesService.listar(), []);
 
   const texto = q.trim().toLowerCase();
   const lista = (data || []).filter((c) => pasa(c, filtro))
@@ -59,7 +61,7 @@ export default function Clientes() {
           )}
       </div>
 
-      {dialogo && dialogo.tipo !== "codigo" && <ClienteDialog cliente={dialogo.cliente} onClose={cerrar} onDone={hecho} />}
+      {dialogo && dialogo.tipo !== "codigo" && <ClienteDialog cliente={dialogo.cliente} sucursales={sucs.data || []} onClose={cerrar} onDone={hecho} />}
       {dialogo && dialogo.tipo === "codigo" && <CodigoWebDialog cliente={dialogo.cliente} onClose={cerrar} />}
     </>
   );

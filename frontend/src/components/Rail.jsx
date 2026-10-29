@@ -27,6 +27,7 @@ export default function Rail() {
   if (PERMISOS.sucursales.includes(rol)) enlaces.push(["/sucursales", "Sucursales", "store", pathname === "/sucursales"]);
   if (PERMISOS.proveedores.includes(rol)) enlaces.push(["/proveedores", "Proveedores", "truck", pathname === "/proveedores"]);
   if (PERMISOS.empleados.includes(rol)) enlaces.push(["/empleados", "Empleados", "users", pathname === "/empleados"]);
+  if (PERMISOS.reportes.includes(rol)) enlaces.push(["/reportes", "Reportes de ventas", "chart", pathname === "/reportes"]);
 
   return (
     <nav id="rail" aria-label="Navegación principal">
@@ -34,7 +35,7 @@ export default function Rail() {
         <Link key={to} to={to} className={`nav ${activo ? "on" : ""}`} title={t} aria-label={t}><Icon name={icon} /></Link>
       ))}
       <span className="sp" />
-      <button className="avatar" title={`${sesion.nombre} (${sesion.puesto || "sin puesto"}). Mi cuenta y contraseña`} aria-label="Mi cuenta" onClick={() => setCuenta(true)}>{iniciales}</button>
+      <button className="avatar" title={`${sesion.nombre} (${sesion.puesto || "sin puesto"}${sesion.sucursal ? `, ${sesion.sucursal}` : rol === "DISTRITAL" ? ", todas las sucursales" : ""}). Mi cuenta y contraseña`} aria-label="Mi cuenta" onClick={() => setCuenta(true)}>{iniciales}</button>
       <button className="nav" title="Cerrar sesión" aria-label="Cerrar sesión" onClick={salir}><Icon name="out" /></button>
       {cuenta && <CambiarPasswordDialog onClose={() => setCuenta(false)} />}
     </nav>

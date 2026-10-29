@@ -2,14 +2,15 @@ const db = require("../models");
 const Empleado = db.empleado;
 const bcrypt = require("bcryptjs");
 const { registrarAuditoria } = require("../utils/auditoria");
-const { validarPassword, hashPassword, leerDatosEmpleado, buscarPorEmail, firmarToken } = require("../utils/empleados");
+const { validarPassword, hashPassword, leerDatosEmpleado, buscarPorEmail, firmarToken, aplicarReglasDeGestion } = require("../utils/empleados");
 
 // Candado de la transacción del registro inicial: dos registros simultáneos con la base vacía
-// se ordenan y solo el primero queda como ADMIN.
+// se ordenan y solo el primero queda como DISTRITAL.
 const CANDADO_REGISTRO_INICIAL = 727001;
 
-// POST /api/auth/registro — protegido por permitirRegistro: solo un ADMIN registra empleados.
-// Excepción: con la base vacía (req.registroInicial) el primer empleado queda siempre como ADMIN.
+// POST /api/auth/registro — protegido por permitirRegistro: solo un ADMIN (de su sucursal: cajeros
+// y bodegueros) o el DISTRITAL (cualquier puesto) registran empleados. Excepción: con la base
+// vacía (req.registroInicial) el primer empleado queda siempre como DISTRITAL, sin sucursal.
 exports.registro = async (req, res) => {
   try {
     const body = req.body || {};
@@ -20,10 +21,16 @@ exports.registro = async (req, res) => {
     if (errorPassword) return res.status(400).send({ message: errorPassword });
 
     const { datos, error } = await leerDatosEmpleado(
-      { ...body, puesto: req.registroInicial ? "ADMIN" : body.puesto, activo: undefined },
+      { ...body, puesto: req.registroInicial ? "DISTRITAL" : body.puesto, activo: undefined },
       { esAlta: true }
     );
     if (error) return res.status(400).send({ message: error });
+    if (req.registroInicial) {
+      datos.id_sucursal = null;
+    } else {
+      const regla = aplicarReglasDeGestion(req.empleado, null, datos);
+      if (regla) return res.status(regla.status).send({ message: regla.message });
+    }
 
     const nuevoEmpleado = await db.sequelize.transaction(async (t) => {
       if (req.registroInicial) {
@@ -97,9 +104,17 @@ exports.login = async (req, res) => {
 
 // GET /api/auth/yo — datos actuales del empleado del token (el panel los usa para refrescar el
 // puesto si un ADMIN lo cambió después del login).
-exports.yo = (req, res) => {
-  const e = req.empleado;
-  res.send({ id: e.id_empleado, email: e.email, nombre: e.nombre, apellido: e.apellido, puesto: e.puesto, id_sucursal: e.id_sucursal });
+exports.yo = async (req, res) => {
+  try {
+    const e = req.empleado;
+    const sucursal = e.id_sucursal ? await db.sucursal.findByPk(e.id_sucursal, { attributes: ['nombre'] }) : null;
+    res.send({
+      id: e.id_empleado, email: e.email, nombre: e.nombre, apellido: e.apellido, puesto: e.puesto,
+      id_sucursal: e.id_sucursal, sucursal: sucursal ? sucursal.nombre : null
+    });
+  } catch (error) {
+    res.status(500).send({ message: "Error al leer la sesión." });
+  }
 };
 
 // PUT /api/auth/password — el propio empleado cambia su contraseña: { actual, nueva }.

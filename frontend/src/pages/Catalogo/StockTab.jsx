@@ -1,20 +1,29 @@
 import Select from "../../components/Select";
+import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import useSubmit from "../../hooks/useSubmit";
 import * as inventarioService from "../../services/inventarioService";
 import { prod, vacioANull } from "../../utils/format";
+import { puede } from "../../utils/permisos";
 
 export default function StockTab({ prods, sucs, reload }) {
+  const { sesion, rol } = useAuth();
   const aviso = useToast();
+  // Cada sucursal ingresa stock solo en la suya; el distrital elige la sucursal.
+  const todas = puede(rol, "todasLasSucursales");
+  const propia = sesion && sesion.id_sucursal;
+  const opciones = sucs.filter((x) => x.activo !== false && (todas || x.id_sucursal === propia));
   const { error, enviando, onSubmit } = useSubmit(async (fd, form) => {
     const r = await inventarioService.ingresar({
-      id_producto: Number(fd.get("id_producto")), id_sucursal: Number(fd.get("id_sucursal")),
+      id_producto: Number(fd.get("id_producto")), id_sucursal: Number(todas ? fd.get("id_sucursal") : propia),
       cantidad: Number(fd.get("cantidad")), lote: vacioANull(fd.get("lote")), estado: fd.get("estado"),
     });
     aviso(`Stock registrado: ${r.cantidad} u. de la prenda #${r.id_producto}.`);
     form.reset();
     reload();
   });
+
+  if (!todas && !propia) return <div className="card err">Tu cuenta no tiene sucursal asignada: pide al gerente distrital que te asigne una.</div>;
 
   return (
     <form className="card stack" onSubmit={onSubmit}>
@@ -23,13 +32,13 @@ export default function StockTab({ prods, sucs, reload }) {
         <Select className="field" name="id_producto" required placeholder="Elige la prenda"
           options={prods.filter((p) => p.activo).map((p) => [p.id_producto, `#${p.id_producto} ${prod(p)}`])} />
       </label>
-      {sucs.length ? (
+      {todas ? (
         <label className="sm muted">Sucursal
-          <Select className="field" name="id_sucursal" required placeholder={sucs.some((x) => x.activo !== false) ? "Elige la sucursal" : "No hay sucursales activas (actívalas en Sucursales)"}
-            options={sucs.filter((x) => x.activo !== false).map((x) => [x.id_sucursal, x.nombre])} />
+          <Select className="field" name="id_sucursal" required placeholder={opciones.length ? "Elige la sucursal" : "No hay sucursales activas (actívalas en Sucursales)"}
+            options={opciones.map((x) => [x.id_sucursal, x.nombre])} />
         </label>
       ) : (
-        <label className="sm muted">Número de sucursal<input className="field" name="id_sucursal" type="number" min="1" step="1" required /></label>
+        <p className="sm">Sucursal: <b>{(opciones[0] || {}).nombre || sesion.sucursal || `#${propia}`}</b></p>
       )}
       <div className="grid2">
         <label className="sm muted">Cantidad<input className="field" name="cantidad" type="number" step="1" min="1" required /></label>

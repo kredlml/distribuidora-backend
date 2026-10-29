@@ -3,6 +3,7 @@ const DetallePedido = db.detalle_pedido;
 const Pedido = db.pedido;
 const sequelize = db.sequelize;
 const { registrarAuditoria } = require("../utils/auditoria");
+const { whereSucursal } = require("../utils/alcance");
 const {
   errorHttp,
   validarCantidad,
@@ -150,7 +151,10 @@ exports.findAll = async (req, res) => {
   try {
     const where = {};
     if (req.query.id_pedido) where.id_pedido = req.query.id_pedido;
-    const data = await DetallePedido.findAll({ where, order: [['id_detalle_pedido', 'ASC']] });
+    // Solo líneas de pedidos de la propia sucursal (el DISTRITAL, todas).
+    const alcance = whereSucursal(req);
+    const include = Object.keys(alcance).length ? [{ model: db.pedido, attributes: [], where: alcance }] : [];
+    const data = await DetallePedido.findAll({ where, include, order: [['id_detalle_pedido', 'ASC']] });
     res.send(data);
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al recuperar los detalles." });

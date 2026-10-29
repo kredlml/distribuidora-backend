@@ -91,3 +91,4 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 12px; margin-top: 
   #app { padding: 24px 16px 64px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.recargando { opacity: .5; pointer-events: none; transition: opacity .15s; }

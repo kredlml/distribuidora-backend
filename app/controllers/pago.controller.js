@@ -3,6 +3,7 @@ const Pago = db.pago;
 const Pedido = db.pedido;
 const { stripe, STRIPE_SIMULADO } = require("../config/stripe.config");
 const { registrarAuditoria } = require("../utils/auditoria");
+const { whereSucursal } = require("../utils/alcance");
 const { errorHttp, normalizarMonto, totalPagado, totalComprometido, procesarPedidoSiEstaPagado, registrarCobroExitoso } = require("../utils/facturacion");
 
 const METODOS_PAGO = ['STRIPE', 'PAYPAL', 'EFECTIVO', 'TARJETA'];
@@ -276,7 +277,10 @@ exports.findAll = async (req, res) => {
 
   try {
 
-    const data = await Pago.findAll();
+    // Solo pagos de pedidos de la propia sucursal (el DISTRITAL, todos).
+    const alcance = whereSucursal(req);
+    const include = Object.keys(alcance).length ? [{ model: Pedido, attributes: [], where: alcance }] : [];
+    const data = await Pago.findAll({ include, order: [['id_pago', 'DESC']] });
 
     res.send(data);
 

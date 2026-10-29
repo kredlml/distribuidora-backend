@@ -43,7 +43,7 @@
               }
             },
             "url": "{{baseUrl}}/api/auth/registro",
-            "description": "Solo funciona con la base de datos SIN empleados: ese primer empleado queda siempre como ADMIN (ignora el puesto). Si ya hay empleados responde 403: en ese caso pon en las variables de coleccion admin_email/admin_password las credenciales de un ADMIN existente."
+            "description": "Solo funciona con la base de datos SIN empleados: ese primer empleado queda siempre como DISTRITAL (gerente distrital: todas las sucursales), sin sucursal, e ignora el puesto. Si ya hay empleados responde 403: en ese caso pon en las variables de coleccion admin_email/admin_password las credenciales de tu cuenta DISTRITAL."
           },
           "response": []
         },
@@ -231,7 +231,7 @@
               }
             },
             "url": "{{baseUrl}}/api/sucursales",
-            "description": "Requiere rol ADMIN."
+            "description": "Requiere rol DISTRITAL (abrir, editar y cerrar sucursales es del gerente distrital)."
           },
           "response": []
         },
@@ -293,7 +293,7 @@
               }
             },
             "url": "{{baseUrl}}/api/sucursales/{{id_sucursal}}",
-            "description": "Requiere rol ADMIN. Solo aplica nombre, direccion, ciudad, telefono y activo (boolean); cualquier otro campo se ignora."
+            "description": "Requiere rol DISTRITAL. Solo aplica nombre, direccion, ciudad, telefono y activo (boolean); cualquier otro campo se ignora."
           },
           "response": []
         },
@@ -397,7 +397,7 @@
               }
             ],
             "url": "{{baseUrl}}/api/sucursales/{{id_sucursal_temporal}}",
-            "description": "Requiere rol ADMIN. Solo se elimina si nunca tuvo empleados, inventario ni pedidos; si no, responde 409 y hay que desactivarla (activo=false). Ver 'Eliminar sucursal con historial' en el folder 7."
+            "description": "Requiere rol DISTRITAL. Solo se elimina si nunca tuvo empleados, clientes registrados, inventario ni pedidos; si no, responde 409 y hay que desactivarla (activo=false). Ver 'Eliminar sucursal con historial' en el folder 7."
           },
           "response": []
         }
@@ -840,7 +840,7 @@
               }
             },
             "url": "{{baseUrl}}/api/categorias/{{id_categoria}}",
-            "description": "Requiere rol BODEGUERO o ADMIN. Acepta nombre (único, sin distinguir mayúsculas) y descripcion."
+            "description": "Requiere rol DISTRITAL (el catálogo es único para todas las sucursales). Acepta nombre (único, sin distinguir mayúsculas) y descripcion."
           },
           "response": []
         },
@@ -909,7 +909,7 @@
               }
             ],
             "url": "{{baseUrl}}/api/categorias/{{id_categoria_temporal}}",
-            "description": "Requiere rol ADMIN. Si alguna prenda usa el tipo responde 409 (ver 'Eliminar categoria en uso' en el folder 6)."
+            "description": "Requiere rol DISTRITAL. Si alguna prenda usa el tipo responde 409 (ver 'Eliminar categoria en uso' en el folder 6)."
           },
           "response": []
         }
@@ -1070,7 +1070,7 @@
               }
             },
             "url": "{{baseUrl}}/api/empleados/{{id_cajero}}",
-            "description": "Requiere rol ADMIN. Campos: nombre, apellido, email, puesto, id_sucursal, activo. El cambio de puesto aplica al instante (los roles se leen de la base en cada petición)."
+            "description": "DISTRITAL: a cualquier empleado. ADMIN: solo cajeros y bodegueros de su sucursal. Campos: nombre, apellido, email, puesto, id_sucursal, activo. El cambio de puesto aplica al instante (los roles se leen de la base en cada petición)."
           },
           "response": []
         },
@@ -1110,7 +1110,7 @@
               }
             },
             "url": "{{baseUrl}}/api/empleados/{{id_cajero}}/password",
-            "description": "Requiere rol ADMIN. Asigna una contraseña temporal y cierra las sesiones abiertas de ese empleado; él la cambia con PUT /api/auth/password."
+            "description": "DISTRITAL: a cualquiera; ADMIN: a cajeros y bodegueros de su sucursal. Asigna una contraseña temporal y cierra las sesiones abiertas de ese empleado; él la cambia con PUT /api/auth/password."
           },
           "response": []
         },
@@ -1395,7 +1395,7 @@
               }
             },
             "url": "{{baseUrl}}/api/empleados",
-            "description": "Requiere rol ADMIN. Ficha de empleado sin contraseña (no puede iniciar sesion; para eso usar 'Registrar cajero'). email con {{$timestamp}} porque la columna email de Empleado es unica en la base de datos (aunque el modelo Sequelize no lo declare) - un valor fijo solo funciona la primera vez que se corre la coleccion."
+            "description": "DISTRITAL o ADMIN (este solo cajeros/bodegueros de su sucursal). Ficha de empleado sin contraseña (no puede iniciar sesion; para eso usar 'Registrar cajero'). email con {{$timestamp}} porque la columna email de Empleado es unica en la base de datos (aunque el modelo Sequelize no lo declare) - un valor fijo solo funciona la primera vez que se corre la coleccion."
           },
           "response": []
         },
@@ -1472,7 +1472,7 @@
               }
             },
             "url": "{{baseUrl}}/api/productos",
-            "description": "Requiere rol BODEGUERO o ADMIN."
+            "description": "Requiere rol DISTRITAL: el catálogo es uno solo para todas las sucursales."
           },
           "response": []
         },
@@ -1638,7 +1638,7 @@
               }
             },
             "url": "{{baseUrl}}/api/inventario",
-            "description": "Requiere rol BODEGUERO o ADMIN."
+            "description": "BODEGUERO o ADMIN de esa sucursal (el DISTRITAL, en cualquiera)."
           },
           "response": []
         },
@@ -2668,7 +2668,7 @@
       ]
     },
     {
-      "id": "distribuidora-89",
+      "id": "distribuidora-90",
       "name": "12. Reportes",
       "item": [
         {
@@ -2723,15 +2723,44 @@
             "description": "Suma el stock DISPONIBLE por producto/sucursal y lo compara contra Producto.stock_minimo. Con los datos de esta coleccion normalmente da un arreglo vacio (el stock creado supera el minimo); para verlo con resultados, crea un producto con stock_minimo alto o registra poco inventario."
           },
           "response": []
+        },
+        {
+          "id": "distribuidora-89",
+          "name": "Resumen de ventas (tablero de gerentes)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test(\"Trae indicadores y desgloses\", () => { pm.expect(d.kpis).to.have.property(\"ventas\"); pm.expect(d.por_prenda).to.be.an(\"array\"); pm.expect(d.por_sucursal).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/resumen",
+            "description": "ADMIN (su sucursal) o DISTRITAL (todas, o una con ?id_sucursal=N). Parámetros desde/hasta (AAAA-MM-DD, días de Guatemala; por defecto hoy, máximo un año). Ventas = pedidos pagados (PROCESADO, ENVIADO, ENTREGADO). Devuelve kpis (ventas, pedidos, unidades, ticket promedio, ventas de hoy, por cobrar, cancelados, devoluciones y cambios) y desgloses por sucursal, día, prenda, tipo, método de pago, origen, vendedor y stock crítico."
+          },
+          "response": []
         }
       ]
     },
     {
-      "id": "distribuidora-100",
+      "id": "distribuidora-102",
       "name": "13. Devoluciones",
       "item": [
         {
-          "id": "distribuidora-90",
+          "id": "distribuidora-91",
           "name": "Crear solicitud de devolucion",
           "event": [
             {
@@ -2774,15 +2803,16 @@
           "response": []
         },
         {
-          "id": "distribuidora-91",
-          "name": "Crear solicitud de cambio de talla/variante",
+          "id": "distribuidora-92",
+          "name": "Segunda solicitud del mismo pedido (rechazada)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+                  "pm.test(\"400 esperado: solo se permite una solicitud de cambio o devolución por pedido\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Explica la regla\", () => pm.expect(pm.response.json().message).to.match(/solo se permite una/));"
                 ]
               }
             }
@@ -2808,12 +2838,42 @@
                 }
               }
             },
-            "url": "{{baseUrl}}/api/devoluciones"
+            "url": "{{baseUrl}}/api/devoluciones",
+            "description": "Política: UNA sola solicitud por pedido (aunque la rechacen) y solo dentro de las 24 horas siguientes a la entrega (Pedido.fecha_entrega, se guarda al marcar ENTREGADO). Un cambio de talla se pide en esa misma solicitud."
           },
           "response": []
         },
         {
-          "id": "distribuidora-92",
+          "id": "distribuidora-93",
+          "name": "Pedido ya no admite solicitudes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test(\"permite_devolucion=false por YA_SOLICITADO\", () => { pm.expect(d.permite_devolucion).to.equal(false); pm.expect(d.motivo_no_permite).to.equal(\"YA_SOLICITADO\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/devoluciones/pedido/{{id_pedido}}/devolvible",
+            "description": "Indica si el pedido admite hoy una solicitud (permite_devolucion), el motivo si no (NO_ENTREGADO, YA_SOLICITADO, PLAZO_VENCIDO) y hasta cuándo se puede (plazo_vence)."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-94",
           "name": "Listar devoluciones",
           "event": [
             {
@@ -2839,7 +2899,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-93",
+          "id": "distribuidora-95",
           "name": "Obtener devolucion por id",
           "event": [
             {
@@ -2870,7 +2930,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-94",
+          "id": "distribuidora-96",
           "name": "Aprobar devolucion",
           "event": [
             {
@@ -2896,7 +2956,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-95",
+          "id": "distribuidora-97",
           "name": "Rechazar devolucion",
           "event": [
             {
@@ -2923,7 +2983,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-96",
+          "id": "distribuidora-98",
           "name": "Recibir devolucion",
           "event": [
             {
@@ -2950,7 +3010,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-97",
+          "id": "distribuidora-99",
           "name": "Revisar devolucion",
           "event": [
             {
@@ -2990,7 +3050,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-98",
+          "id": "distribuidora-100",
           "name": "Reintegrar devolucion a inventario",
           "event": [
             {
@@ -3017,7 +3077,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-99",
+          "id": "distribuidora-101",
           "name": "Procesar cambio de talla/variante",
           "event": [
             {
@@ -3046,11 +3106,11 @@
       ]
     },
     {
-      "id": "distribuidora-103",
+      "id": "distribuidora-105",
       "name": "14. Auditoría",
       "item": [
         {
-          "id": "distribuidora-101",
+          "id": "distribuidora-103",
           "name": "Registrar auditoria manual",
           "event": [
             {
@@ -3089,7 +3149,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-102",
+          "id": "distribuidora-104",
           "name": "Listar auditoria",
           "event": [
             {
@@ -3117,12 +3177,12 @@
       ]
     },
     {
-      "id": "distribuidora-105",
+      "id": "distribuidora-107",
       "name": "15. Webhook (Stripe)",
       "description": "Endpoint de uso interno de Stripe. Se deja documentado por completitud, no para ejecutarse tal cual desde Postman.",
       "item": [
         {
-          "id": "distribuidora-104",
+          "id": "distribuidora-106",
           "name": "Stripe webhook (referencia, no ejecutar desde Postman)",
           "event": [
             {
@@ -3160,12 +3220,12 @@
       ]
     },
     {
-      "id": "distribuidora-123",
+      "id": "distribuidora-125",
       "name": "16. Tienda en línea (cliente)",
       "description": "Endpoints de la tienda para clientes (app tienda/). Usan el token de cliente {{token_cliente}}, distinto del token de empleado.",
       "item": [
         {
-          "id": "distribuidora-106",
+          "id": "distribuidora-108",
           "name": "Registro de cliente",
           "event": [
             {
@@ -3212,7 +3272,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-107",
+          "id": "distribuidora-109",
           "name": "Login de cliente",
           "event": [
             {
@@ -3249,7 +3309,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-108",
+          "id": "distribuidora-110",
           "name": "Registro con correo de cliente de mostrador (rechazado)",
           "event": [
             {
@@ -3285,7 +3345,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-109",
+          "id": "distribuidora-111",
           "name": "Activar cuenta de mostrador",
           "event": [
             {
@@ -3322,7 +3382,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-110",
+          "id": "distribuidora-112",
           "name": "Reusar el código (rechazado)",
           "event": [
             {
@@ -3357,7 +3417,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-111",
+          "id": "distribuidora-113",
           "name": "Token de cliente en el panel (rechazado)",
           "event": [
             {
@@ -3383,7 +3443,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-112",
+          "id": "distribuidora-114",
           "name": "Catálogo (público)",
           "event": [
             {
@@ -3405,7 +3465,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-113",
+          "id": "distribuidora-115",
           "name": "Detalle de prenda (público)",
           "event": [
             {
@@ -3427,7 +3487,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-114",
+          "id": "distribuidora-116",
           "name": "Perfil del cliente",
           "event": [
             {
@@ -3453,7 +3513,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-115",
+          "id": "distribuidora-117",
           "name": "Crear pedido (checkout)",
           "event": [
             {
@@ -3496,7 +3556,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-116",
+          "id": "distribuidora-118",
           "name": "Mis pedidos",
           "event": [
             {
@@ -3522,7 +3582,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-117",
+          "id": "distribuidora-119",
           "name": "Detalle de mi pedido",
           "event": [
             {
@@ -3548,7 +3608,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-118",
+          "id": "distribuidora-120",
           "name": "Iniciar pago con tarjeta",
           "event": [
             {
@@ -3575,7 +3635,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-119",
+          "id": "distribuidora-121",
           "name": "Sincronizar pago",
           "event": [
             {
@@ -3602,7 +3662,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-120",
+          "id": "distribuidora-122",
           "name": "Crear pedido para cancelar",
           "event": [
             {
@@ -3644,7 +3704,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-121",
+          "id": "distribuidora-123",
           "name": "Cancelar pedido pendiente",
           "event": [
             {
@@ -3671,7 +3731,7 @@
           "response": []
         },
         {
-          "id": "distribuidora-122",
+          "id": "distribuidora-124",
           "name": "Mis devoluciones",
           "event": [
             {

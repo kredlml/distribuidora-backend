@@ -1,6 +1,7 @@
 const db = require("../models");
 const Inventario = db.inventario;
 const { registrarAuditoria } = require("../utils/auditoria");
+const { enAlcance, whereSucursal } = require("../utils/alcance");
 
 // Estados con los que se puede ingresar stock desde el panel (Catálogo > Ingresar stock).
 const ESTADOS_INGRESO = ['DISPONIBLE', 'DANADA', 'DEFECTUOSA'];
@@ -26,6 +27,9 @@ exports.create = async (req, res) => {
     }
     if (!esEnteroPositivo(body.cantidad)) {
       return res.status(400).send({ message: "La cantidad debe ser un número entero mayor a 0. Para bajar stock usa el ajuste de inventario de la sucursal." });
+    }
+    if (!enAlcance(req, body.id_sucursal)) {
+      return res.status(403).send({ message: "Solo puedes ingresar stock en tu sucursal." });
     }
     const estado = body.estado || 'DISPONIBLE';
     if (!ESTADOS_INGRESO.includes(estado)) {
@@ -59,6 +63,8 @@ exports.findAll = async (req, res) => {
       if (!esEnteroPositivo(req.query.id_sucursal)) return res.status(400).send({ message: "id_sucursal debe ser un número válido." });
       where.id_sucursal = Number(req.query.id_sucursal);
     }
+    // Fuera del DISTRITAL, solo el inventario de la propia sucursal.
+    Object.assign(where, whereSucursal(req));
     const data = await Inventario.findAll({ where, order: [['id_producto', 'ASC'], ['id_inventario', 'ASC']] });
     res.send(data);
   } catch (err) {
@@ -109,6 +115,7 @@ exports.ajustar = async (req, res) => {
   try {
     const body = req.body || {};
     if (!esEnteroPositivo(body.id_sucursal)) return res.status(400).send({ message: "Indica la sucursal del ajuste." });
+    if (!enAlcance(req, body.id_sucursal)) return res.status(403).send({ message: "Solo puedes ajustar el stock de tu sucursal." });
     const motivo = String(body.motivo || "").trim().toUpperCase();
     if (!MOTIVOS_AJUSTE[motivo]) {
       return res.status(400).send({ message: `El motivo debe ser uno de: ${Object.keys(MOTIVOS_AJUSTE).join(", ")}.` });
@@ -202,7 +209,8 @@ exports.getStockGlobal = async (req, res) => {
         [db.sequelize.fn('SUM', db.sequelize.col('cantidad')), 'stock_total']
       ],
       where: {
-        estado: 'DISPONIBLE'
+        estado: 'DISPONIBLE',
+        ...whereSucursal(req)
       },
       group: ['id_producto', 'id_sucursal']
     });

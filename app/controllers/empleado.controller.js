@@ -1,14 +1,17 @@
 const db = require("../models");
 const Empleado = db.empleado;
 const { registrarAuditoria } = require("../utils/auditoria");
-const { validarPassword, hashPassword, leerDatosEmpleado, adminsActivos, publico } = require("../utils/empleados");
+const { puestoDe } = require("../middlewares/authJwt.js");
+const { whereSucursal } = require("../utils/alcance");
+const { validarPassword, hashPassword, leerDatosEmpleado, activosConAcceso, aplicarReglasDeGestion, publico } = require("../utils/empleados");
 
-// POST /api/empleados — ficha de empleado SIN contraseña (no puede iniciar sesión hasta que un
-// ADMIN le dé acceso con PUT /:id/password). Mismas validaciones que el registro con contraseña.
+// POST /api/empleados — ficha de empleado SIN contraseña (no puede iniciar sesión hasta que le den
+// acceso con PUT /:id/password). Mismas validaciones y reglas de gestión que el registro con
+// contraseña: el ADMIN solo da de alta cajeros y bodegueros de su sucursal.
 exports.create = async (req, res) => {
   try {
     const body = req.body || {};
-    if (!body.nombre || !body.apellido || !body.puesto || !body.id_sucursal) {
+    if (!body.nombre || !body.apellido || !body.puesto) {
       return res.status(400).send({ message: "Faltan campos obligatorios (nombre, apellido, puesto, email, id_sucursal)." });
     }
     const { datos, error } = await leerDatosEmpleado(
@@ -16,6 +19,8 @@ exports.create = async (req, res) => {
       { esAlta: true }
     );
     if (error) return res.status(400).send({ message: error });
+    const regla = aplicarReglasDeGestion(req.empleado, null, datos);
+    if (regla) return res.status(regla.status).send({ message: regla.message });
 
     const data = await db.sequelize.transaction(async (t) => {
       const empleado = await Empleado.create({ activo: true, ...datos }, { transaction: t });
@@ -35,10 +40,12 @@ exports.create = async (req, res) => {
   }
 };
 
+// GET /api/empleados — el DISTRITAL ve a todos; el ADMIN, a los de su sucursal.
 exports.findAll = async (req, res) => {
   try {
     // Nunca se exponen los hashes de contraseña; sí si la cuenta puede iniciar sesión.
     const data = await Empleado.findAll({
+      where: whereSucursal(req),
       include: [{ model: db.sucursal, attributes: ['id_sucursal', 'nombre'] }],
       order: [['id_empleado', 'ASC']]
     });
@@ -48,11 +55,12 @@ exports.findAll = async (req, res) => {
   }
 };
 
-// PUT /api/empleados/:id — un ADMIN edita nombre, apellido, email, puesto, sucursal y activo.
-// Reglas para no dejar el sistema sin administración:
-//  - nadie puede desactivarse ni quitarse el puesto ADMIN a sí mismo;
-//  - siempre debe quedar al menos un ADMIN activo que pueda iniciar sesión;
-//  - quien edita debe seguir siendo ADMIN activo al momento de aplicar (se revisa con el bloqueo).
+// PUT /api/empleados/:id — edita nombre, apellido, email, puesto, sucursal y activo.
+// Reglas:
+//  - el DISTRITAL gestiona a cualquiera; el ADMIN, solo cajeros y bodegueros de su sucursal;
+//  - nadie puede desactivarse ni cambiarse el puesto a sí mismo;
+//  - siempre debe quedar al menos un DISTRITAL activo que pueda iniciar sesión;
+//  - quien edita debe seguir siendo ADMIN o DISTRITAL activo al aplicar (se revisa con el bloqueo).
 // Desactivar a alguien cierra sus sesiones abiertas (sube token_version).
 exports.update = async (req, res) => {
   try {
@@ -68,27 +76,48 @@ exports.update = async (req, res) => {
     }
 
     const resultado = await db.sequelize.transaction(async (t) => {
-      const admins = await adminsActivos(t); // bloquea antes de leer al empleado: mismo orden siempre
-      if (!admins.some((a) => a.id_empleado === req.empleadoId)) {
+      const activos = await activosConAcceso(t); // bloquea antes de leer al empleado: mismo orden siempre
+      const yo = activos.find((a) => a.id_empleado === req.empleadoId);
+      if (!yo || !["ADMIN", "DISTRITAL"].includes(yo.puesto)) {
         return { status: 403, message: "¡Acceso denegado! Esta acción requiere privilegios de Administrador." };
       }
       const empleado = await Empleado.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
       if (!empleado) return { status: 404, message: `No se encontró el empleado con id=${req.params.id}.` };
-
-      const sale = (datos.puesto && datos.puesto !== "ADMIN") || datos.activo === false;
-      if (empleado.id_empleado === req.empleadoId && sale) {
-        return { status: 400, message: "No puedes desactivarte ni quitarte el puesto de ADMIN a ti mismo. Pídeselo a otro administrador." };
+      // Un ADMIN no "ve" empleados de otra sucursal: para él no existen.
+      if (yo.puesto !== "DISTRITAL" && Number(empleado.id_sucursal) !== Number(yo.id_sucursal)) {
+        return { status: 404, message: `No se encontró el empleado con id=${req.params.id}.` };
       }
-      const esAdminUtil = admins.some((a) => a.id_empleado === empleado.id_empleado);
-      if (esAdminUtil && sale && admins.length <= 1) {
-        return { status: 400, message: "Debe quedar al menos un ADMIN activo." };
+
+      if (empleado.id_empleado === req.empleadoId && (datos.activo === false || (datos.puesto && datos.puesto !== puestoDe(empleado)))) {
+        return { status: 400, message: "No puedes desactivarte ni cambiarte el puesto a ti mismo. Pídeselo a tu superior." };
+      }
+      if (empleado.id_empleado === req.empleadoId) {
+        // Sus propios datos (nombre, apellido, correo) sí; su sucursal, no.
+        if (datos.id_sucursal !== undefined && (datos.id_sucursal ?? null) !== (empleado.id_sucursal ?? null)) {
+          return { status: 400, message: "No puedes cambiarte de sucursal a ti mismo. Pídeselo a tu superior." };
+        }
+        delete datos.id_sucursal;
+      } else {
+        const regla = aplicarReglasDeGestion(yo, empleado, datos);
+        if (regla) return regla;
+      }
+
+      const distritales = activos.filter((a) => a.puesto === "DISTRITAL");
+      const dejaDeSerDistrital = distritales.some((a) => a.id_empleado === empleado.id_empleado)
+        && ((datos.puesto && datos.puesto !== "DISTRITAL") || datos.activo === false);
+      if (dejaDeSerDistrital && distritales.length <= 1) {
+        return { status: 400, message: "Debe quedar al menos un DISTRITAL activo." };
       }
 
       const diffs = Object.keys(datos).filter((k) => (empleado[k] ?? null) !== datos[k])
         .map((k) => `${k}: ${empleado[k] ?? "vacío"} → ${datos[k] ?? "vacío"}`);
       if (diffs.length) {
         const cambios = { ...datos };
-        if (datos.activo === false && empleado.activo !== false) cambios.token_version = (empleado.token_version || 0) + 1;
+        // Desactivarlo, o cambiarle el puesto o la sucursal, cierra sus sesiones: al volver a
+        // entrar el panel le muestra lo que corresponde a su nuevo puesto y sucursal.
+        const cambiaAlcance = (datos.puesto !== undefined && datos.puesto !== puestoDe(empleado))
+          || (datos.id_sucursal !== undefined && (datos.id_sucursal ?? null) !== (empleado.id_sucursal ?? null));
+        if ((datos.activo === false && empleado.activo !== false) || cambiaAlcance) cambios.token_version = (empleado.token_version || 0) + 1;
         await empleado.update(cambios, { transaction: t });
         await registrarAuditoria({
           id_empleado: req.empleadoId, accion: 'EMPLEADO_ACTUALIZADO', tabla_afectada: 'Empleado',
@@ -108,16 +137,22 @@ exports.update = async (req, res) => {
   }
 };
 
-// PUT /api/empleados/:id/password — un ADMIN asigna una contraseña temporal (olvido, alta de una
-// ficha sin acceso). El empleado debería cambiarla al entrar (Cambiar mi contraseña). Cierra las
-// sesiones abiertas de ese empleado. Sin correo no podría iniciar sesión, así que se rechaza.
+// PUT /api/empleados/:id/password — asigna una contraseña temporal (olvido, alta de una ficha sin
+// acceso). El DISTRITAL a cualquiera; el ADMIN solo a cajeros y bodegueros de su sucursal. Cierra
+// las sesiones abiertas de ese empleado. Sin correo no podría iniciar sesión, así que se rechaza.
 exports.restablecerPassword = async (req, res) => {
   try {
     const { password } = req.body || {};
     const errorPassword = validarPassword(password);
     if (errorPassword) return res.status(400).send({ message: errorPassword });
     const empleado = await Empleado.findByPk(req.params.id);
-    if (!empleado) return res.status(404).send({ message: `No se encontró el empleado con id=${req.params.id}.` });
+    const noExiste = { message: `No se encontró el empleado con id=${req.params.id}.` };
+    if (!empleado) return res.status(404).send(noExiste);
+    if (puestoDe(req.empleado) !== "DISTRITAL") {
+      if (Number(empleado.id_sucursal) !== Number(req.empleado.id_sucursal)) return res.status(404).send(noExiste);
+      const regla = aplicarReglasDeGestion(req.empleado, empleado, {});
+      if (regla) return res.status(regla.status).send({ message: regla.message });
+    }
     if (!empleado.email) {
       return res.status(400).send({ message: "Este empleado no tiene correo: agrégalo desde Editar para que pueda iniciar sesión." });
     }

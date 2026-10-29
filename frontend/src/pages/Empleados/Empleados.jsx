@@ -8,7 +8,7 @@ import * as empleadosService from "../../services/empleadosService";
 import * as sucursalesService from "../../services/sucursalesService";
 import { PUESTOS } from "../../utils/constants";
 import { nombreEmp } from "../../utils/format";
-import { rolDe } from "../../utils/permisos";
+import { puede, rolDe } from "../../utils/permisos";
 import EmpleadoDialog from "./EmpleadoDialog";
 import PasswordDialog from "./PasswordDialog";
 
@@ -16,7 +16,11 @@ const NOMBRE_PUESTO = Object.fromEntries(PUESTOS);
 const FILTROS = [["activos", "Activos"], ["inactivos", "Desactivados"], ["todos", "Todos"]];
 
 export default function Empleados() {
-  const { sesion, refrescar } = useAuth();
+  const { sesion, refrescar, rol } = useAuth();
+  const distrital = puede(rol, "todasLasSucursales");
+  // El distrital gestiona a todos; el gerente de sucursal, a los cajeros y bodegueros de la suya
+  // (el servidor solo le muestra empleados de su sucursal).
+  const gestiona = (e) => !(sesion && e.id_empleado === sesion.id) && (distrital || ["CAJERO", "BODEGUERO"].includes(rolDe(e)));
   const [filtro, setFiltro] = useState("activos");
   const [q, setQ] = useState("");
   const [dialogo, setDialogo] = useState(null); // { tipo: "nuevo" | "editar" | "password", empleado }
@@ -41,7 +45,9 @@ export default function Empleados() {
   return (
     <>
       <div className="head">
-        <div><h1>Empleados</h1><div className="muted sm">Cuentas del personal y su puesto. Solo los administradores ven esta sección.</div></div>
+        <div><h1>Empleados</h1><div className="muted sm">{distrital
+          ? "Personal de todas las sucursales y su puesto."
+          : `Personal de tu sucursal${sesion && sesion.sucursal ? ` (${sesion.sucursal})` : ""}. Puedes dar de alta cajeros y bodegueros.`}</div></div>
         <button className="btn pri" onClick={() => setDialogo({ tipo: "nuevo" })}>Nuevo empleado</button>
       </div>
       <div className="bar">
@@ -68,8 +74,8 @@ export default function Empleados() {
                       </span>
                     </div>
                     <div className="ctl">
-                      <button className="btn mini" onClick={() => setDialogo({ tipo: "editar", empleado: e })}>Editar</button>
-                      <button className="btn mini" onClick={() => setDialogo({ tipo: "password", empleado: e })}>{e.tiene_acceso ? "Restablecer contraseña" : "Dar acceso"}</button>
+                      {(gestiona(e) || soyYo) && <button className="btn mini" onClick={() => setDialogo({ tipo: "editar", empleado: e })}>Editar</button>}
+                      {gestiona(e) && <button className="btn mini" onClick={() => setDialogo({ tipo: "password", empleado: e })}>{e.tiene_acceso ? "Restablecer contraseña" : "Dar acceso"}</button>}
                     </div>
                   </div>
                 );
@@ -79,7 +85,8 @@ export default function Empleados() {
       </div>
 
       {dialogo && dialogo.tipo !== "password" && (
-        <EmpleadoDialog empleado={dialogo.empleado} sucs={data ? data.sucs : []} soyYo={!!(dialogo.empleado && sesion && dialogo.empleado.id_empleado === sesion.id)} onClose={cerrar} onDone={hecho} />
+        <EmpleadoDialog empleado={dialogo.empleado} sucs={data ? data.sucs : []} soyYo={!!(dialogo.empleado && sesion && dialogo.empleado.id_empleado === sesion.id)}
+          distrital={distrital} miSucursal={sesion && sesion.id_sucursal} onClose={cerrar} onDone={hecho} />
       )}
       {dialogo && dialogo.tipo === "password" && <PasswordDialog empleado={dialogo.empleado} onClose={cerrar} onDone={hecho} />}
     </>

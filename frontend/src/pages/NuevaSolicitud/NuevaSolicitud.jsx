@@ -96,14 +96,18 @@ export default function NuevaSolicitud() {
               options={(pedidos.data || []).map((p) => [p.id_pedido, `Pedido ${p.id_pedido}, ${fecha(p.fecha_pedido)}, total ${Number(p.total).toFixed(2)}`])} />
           </label>
 
+          {info && !info.permite_devolucion && <p className="err">{info.mensaje}</p>}
+          {info && info.permite_devolucion && info.plazo_vence && (
+            <p className="muted sm">Una sola solicitud por pedido. Plazo hasta el {fecha(info.plazo_vence)} ({info.horas_plazo} horas desde la entrega).</p>
+          )}
           <div>
-            {detalles.map((l, i) => (
+            {info && info.permite_devolucion && detalles.map((l, i) => (
               <LineaPrenda key={l.id_detalle_pedido ?? i} linea={l} estado={lineas[i]} esCambio={esCambio}
                 variantes={variantes(l.id_producto)} onChange={(parche) => setLinea(i, parche)} />
             ))}
           </div>
 
-          {detalles.length > 0 && (
+          {info && info.permite_devolucion && detalles.length > 0 && (
             <div className="stack">
               <label className="sm muted">Tipo
                 <Select className="field" value={tipo} onChange={(ev) => setTipo(ev.target.value)} placeholder="Elige el tipo" options={TIPOS.map((t) => [t, humanizar(t)])} />
@@ -115,7 +119,7 @@ export default function NuevaSolicitud() {
             </div>
           )}
           <div className="err" role="alert">{errorCarga}</div>
-          <div><button className="btn pri" disabled={enviando || !(crea && detalles.some((l) => l.cantidad_devolvible > 0))}>Registrar solicitud</button></div>
+          <div><button className="btn pri" disabled={enviando || !(crea && info && info.permite_devolucion && detalles.some((l) => l.cantidad_devolvible > 0))}>Registrar solicitud</button></div>
         </form>
       </div>
     </>

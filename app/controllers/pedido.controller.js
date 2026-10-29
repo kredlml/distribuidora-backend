@@ -7,6 +7,7 @@ const Producto = db.producto;
 const Pago = db.pago;
 const { registrarAuditoria } = require("../utils/auditoria");
 const { errorHttp, totalPagado, crearPedido, cancelarPedido } = require("../utils/facturacion");
+const { sucursalDe, whereSucursal, enAlcance, clienteEnAlcance } = require("../utils/alcance");
 
 const ESTADOS_PEDIDO_VALIDOS = ['PENDIENTE', 'PROCESADO', 'ENVIADO', 'ENTREGADO', 'CANCELADO'];
 
@@ -16,18 +17,40 @@ const ESTADOS_PEDIDO_VALIDOS = ['PENDIENTE', 'PROCESADO', 'ENVIADO', 'ENTREGADO'
 // Todo pedido nace PENDIENTE de pago; el precio sale del catálogo y el total lo
 // calculan los hooks de DetallePedido, por eso se ignoran estado/total/precio del body.
 exports.create = async (req, res) => {
+  const body = req.body || {};
+
+  // Validaciones de alcance ANTES de abrir la transacción (usan sus propias consultas: hacerlas con
+  // la transacción abierta ocuparía dos conexiones por venta y agotaría el pool con ventas simultáneas).
+  // Cada empleado vende en su sucursal (el DISTRITAL elige cualquiera).
+  const propia = sucursalDe(req);
+  const idSucursal = body.id_sucursal || (propia !== null && propia > 0 ? propia : undefined);
+  try {
+    if (!enAlcance(req, idSucursal)) {
+      return res.status(403).send({ message: "Solo puedes registrar ventas en tu sucursal." });
+    }
+    // Clienta de otra sucursal: solo se le vende si se la buscó por su correo exacto (email_cliente),
+    // así no se pueden "descubrir" clientes ajenos probando números.
+    if (body.id_cliente && Number.isInteger(Number(body.id_cliente)) && !(await clienteEnAlcance(req, body.id_cliente))) {
+      const cliente = await Cliente.findByPk(body.id_cliente);
+      const correo = String(body.email_cliente || "").trim().toLowerCase();
+      if (cliente && (!cliente.email || cliente.email.toLowerCase() !== correo)) {
+        return res.status(403).send({ message: "Esa clienta no es de tu sucursal: búscala por su correo para venderle." });
+      }
+    }
+  } catch (error) {
+    return res.status(500).send({ message: "Error al validar la venta." });
+  }
 
   const t = await db.sequelize.transaction();
 
   try {
-    const body = req.body || {};
     const lineasRecibidas = Array.isArray(body.detalles) && body.detalles.length > 0
       ? body.detalles
       : [{ id_producto: body.id_producto, cantidad: body.cantidad }];
 
     const pedidoCreado = await crearPedido({
       id_cliente: body.id_cliente,
-      id_sucursal: body.id_sucursal,
+      id_sucursal: idSucursal,
       lineasRecibidas,
       id_empleado: req.empleadoId,
       direccion_entrega: typeof body.direccion_entrega === 'string' ? body.direccion_entrega.trim().slice(0, 200) : null
@@ -75,6 +98,8 @@ exports.findAll = async (req, res) => {
       if (!Number.isInteger(Number(valor)) || Number(valor) <= 0) return res.status(400).send({ message: `${campo} debe ser un número válido.` });
       where[campo] = Number(valor);
     }
+    // Fuera del DISTRITAL, solo los pedidos de la propia sucursal (aunque pida otra por filtro).
+    Object.assign(where, whereSucursal(req));
     if (origen) {
       if (!ORIGENES.includes(origen)) return res.status(400).send({ message: `Origen inválido. Valores permitidos: ${ORIGENES.join(', ')}.` });
       where.id_empleado = origen === 'TIENDA' ? null : { [Op.ne]: null };
@@ -212,10 +237,10 @@ function validarTransicionPedido(estadoActual, estadoNuevo) {
 // Puestos que pueden llevar un pedido a cada estado: el cobro y la cancelación son de caja;
 // el despacho y la entrega, de bodega. ADMIN puede todo.
 const PUESTOS_POR_ESTADO = {
-  PROCESADO: ['ADMIN', 'CAJERO'],
-  CANCELADO: ['ADMIN', 'CAJERO'],
-  ENVIADO: ['ADMIN', 'BODEGUERO'],
-  ENTREGADO: ['ADMIN', 'BODEGUERO']
+  PROCESADO: ['DISTRITAL', 'ADMIN', 'CAJERO'],
+  CANCELADO: ['DISTRITAL', 'ADMIN', 'CAJERO'],
+  ENVIADO: ['DISTRITAL', 'ADMIN', 'BODEGUERO'],
+  ENTREGADO: ['DISTRITAL', 'ADMIN', 'BODEGUERO']
 };
 
 // PUT /api/pedidos/:id/estado — avanza el estado del pedido según la máquina de estados.
@@ -232,7 +257,7 @@ exports.actualizarEstado = async (req, res) => {
 
     const empleado = await db.empleado.findByPk(req.empleadoId, { transaction: t });
     const puesto = empleado && empleado.puesto ? empleado.puesto.trim().toUpperCase() : '';
-    const permitidos = PUESTOS_POR_ESTADO[estado] || ['ADMIN'];
+    const permitidos = PUESTOS_POR_ESTADO[estado] || ['DISTRITAL', 'ADMIN'];
     if (!permitidos.includes(puesto)) {
       throw errorHttp(403, `¡Acceso denegado! Solo ${permitidos.join(' o ')} pueden marcar un pedido como ${estado}.`);
     }
@@ -265,6 +290,8 @@ exports.actualizarEstado = async (req, res) => {
       await cancelarPedido(pedido, { id_empleado: req.empleadoId }, t);
     } else {
       pedido.estado = estado;
+      // Desde la entrega corre el plazo para pedir cambio o devolución.
+      if (estado === 'ENTREGADO') pedido.fecha_entrega = new Date();
       await pedido.save({ transaction: t });
     }
 

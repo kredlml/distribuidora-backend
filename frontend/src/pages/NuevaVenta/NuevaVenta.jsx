@@ -11,20 +11,36 @@ import * as pedidosService from "../../services/pedidosService";
 import * as productosService from "../../services/productosService";
 import * as sucursalesService from "../../services/sucursalesService";
 import { dinero, prod } from "../../utils/format";
+import { puede } from "../../utils/permisos";
 import ClienteDialog from "../Clientes/ClienteDialog";
 import "../Pedidos/Pedidos.css";
 
 /** Venta de mostrador: sucursal, cliente y prendas. Crea el pedido y abre el cobro. */
 export default function NuevaVenta() {
-  const { sesion } = useAuth();
+  const { sesion, rol } = useAuth();
+  const todas = puede(rol, "todasLasSucursales");
   const aviso = useToast();
   const navigate = useNavigate();
   const datos = useFetch(async () => {
     const [sucs, clientes, prods, stock] = await Promise.all([
       sucursalesService.listarOFallar(), clientesService.listar(), productosService.listar(), inventarioService.stockDisponible(),
     ]);
-    return { sucs: sucs.filter((s) => s.activo !== false), clientes: clientes.filter((c) => c.activo !== false), prods, stock };
+    // Cada empleado vende en su sucursal; el distrital elige cualquiera.
+    const visibles = sucs.filter((s) => s.activo !== false && (todas || (sesion && s.id_sucursal === sesion.id_sucursal)));
+    return { sucs: visibles, clientes: clientes.filter((c) => c.activo !== false), prods, stock };
   }, []);
+  // Clienta registrada en otra sucursal: se busca por su correo exacto.
+  const [correoOtra, setCorreoOtra] = useState("");
+  const [buscandoOtra, setBuscandoOtra] = useState(false);
+  const buscarEnOtra = async () => {
+    setError(""); setBuscandoOtra(true);
+    try {
+      const [c] = await clientesService.buscarPorCorreo(correoOtra.trim());
+      if (!c) setError("No hay ninguna clienta activa con ese correo. Revísalo o regístrala.");
+      else { setClientesExtra((xs) => [c, ...xs]); setIdCliente(String(c.id_cliente)); setBuscaCliente(""); setCorreoOtra(""); }
+    } catch (e) { setError(e.message); }
+    finally { setBuscandoOtra(false); }
+  };
 
   const [idSucursal, setIdSucursal] = useState(() => (sesion && sesion.id_sucursal ? String(sesion.id_sucursal) : ""));
   const [idCliente, setIdCliente] = useState("");
@@ -84,7 +100,8 @@ export default function NuevaVenta() {
     if (hayExcedidas) return setError("Algunas prendas ya no tienen stock suficiente: ajusta las cantidades marcadas.");
     setEnviando(true);
     try {
-      const r = await pedidosService.crear({ id_cliente: elegido.id_cliente, id_sucursal: Number(sucursal), detalles: lineas });
+      // email_cliente: con él el servidor acepta a una clienta de otra sucursal encontrada por correo.
+      const r = await pedidosService.crear({ id_cliente: elegido.id_cliente, email_cliente: elegido.email || undefined, id_sucursal: Number(sucursal), detalles: lineas });
       aviso(`Pedido #${r.pedido.id_pedido} creado. Registra el pago.`);
       navigate(`/pedidos/${r.pedido.id_pedido}?cobrar=1`, { replace: true });
     } catch (e) {
@@ -101,10 +118,16 @@ export default function NuevaVenta() {
       <form className="stack" onSubmit={vender}>
         <section className="card stack">
           <h2>Sucursal y cliente</h2>
-          <label className="sm muted">Sucursal
-            <Select className="field" value={sucursal} onChange={(e) => cambiarSucursal(e.target.value)}
-              placeholder={d.sucs.length ? "Elige la sucursal" : "No hay sucursales activas"} options={d.sucs.map((s) => [s.id_sucursal, s.nombre])} />
-          </label>
+          {todas ? (
+            <label className="sm muted">Sucursal
+              <Select className="field" value={sucursal} onChange={(e) => cambiarSucursal(e.target.value)}
+                placeholder={d.sucs.length ? "Elige la sucursal" : "No hay sucursales activas"} options={d.sucs.map((s) => [s.id_sucursal, s.nombre])} />
+            </label>
+          ) : d.sucs.length ? (
+            <p className="sm">Sucursal: <b>{d.sucs[0].nombre}</b></p>
+          ) : (
+            <p className="err">Tu sucursal está inactiva o no tienes una asignada: no puedes registrar ventas.</p>
+          )}
           <div className="grid2">
             <label className="sm muted">Buscar cliente<input className="field" value={buscaCliente} onChange={(e) => setBuscaCliente(e.target.value)} placeholder="Nombre, correo o teléfono" /></label>
             <label className="sm muted">Cliente
@@ -113,7 +136,17 @@ export default function NuevaVenta() {
                 options={clientesFiltrados.map((c) => [c.id_cliente, `${c.nombre} ${c.apellido}${c.email ? ` (${c.email})` : c.telefono ? ` (${c.telefono})` : ""}`])} />
             </label>
           </div>
-          <div><button type="button" className="btn mini" onClick={() => setNuevoCliente(true)}>Registrar cliente nuevo</button></div>
+          <div className="ctl">
+            <button type="button" className="btn mini" onClick={() => setNuevoCliente(true)}>Registrar cliente nuevo</button>
+            {!todas && (
+              <span className="ctl otra-sucursal">
+                <input className="field" type="text" inputMode="email" autoComplete="off" aria-label="Correo de una clienta de otra sucursal" placeholder="¿Es clienta de otra sucursal? Su correo"
+                  value={correoOtra} onChange={(e) => setCorreoOtra(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (correoOtra.trim()) buscarEnOtra(); } }} />
+                <button type="button" className="btn mini" disabled={buscandoOtra || !correoOtra.trim()} onClick={buscarEnOtra}>Buscar</button>
+              </span>
+            )}
+          </div>
         </section>
 
         <section className="card">
@@ -154,7 +187,7 @@ export default function NuevaVenta() {
       </form>
 
       {nuevoCliente && (
-        <ClienteDialog onClose={() => setNuevoCliente(false)}
+        <ClienteDialog sucursalFija={sucursal ? Number(sucursal) : undefined} onClose={() => setNuevoCliente(false)}
           onDone={(c) => { setNuevoCliente(false); setClientesExtra((xs) => [c, ...xs]); setBuscaCliente(""); setIdCliente(String(c.id_cliente)); }} />
       )}
     </>

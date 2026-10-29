@@ -1,0 +1,24 @@
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.kpi { display: grid; gap: 4px; padding: 16px 20px; }
+.kpi b { font-weight: 400; font-size: 22px; letter-spacing: -.04em; }
+.kpi.destacado { background: var(--violet); color: #fff; box-shadow: var(--sh-violet); }
+.kpi.destacado .muted { color: rgba(255,255,255,.8); }
+
+.tabla { display: grid; }
+.fila-rep { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); }
+.fila-rep:first-child { border-top: 0; }
+.fila-rep .num { text-align: right; min-width: 80px; }
+.barra { height: 10px; background: var(--canvas); border-radius: 9999px; overflow: hidden; }
+.barra > span { display: block; height: 100%; background: var(--violet); border-radius: 9999px; }
+
+.columnas { display: flex; align-items: flex-end; gap: 8px; height: 220px; overflow-x: auto; padding-top: 8px; }
+.columna { display: grid; grid-template-rows: auto 1fr auto; justify-items: center; height: 100%; min-width: 56px; flex: 1; gap: 4px; }
+.columna .col { width: 70%; max-width: 40px; background: var(--violet); border-radius: 8px 8px 2px 2px; align-self: end; }
+.columna .valor { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.columna .dia { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fecha-filtro { display: flex; align-items: center; gap: 8px; }
+
+@media (max-width: 760px) {
+  .fila-rep { grid-template-columns: minmax(0, 1fr) auto; }
+  .fila-rep .barra { grid-column: 1 / -1; grid-row: 2; }
+}

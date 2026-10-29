@@ -1,12 +1,12 @@
 module.exports = app => {
   const categorias = require("../controllers/categoria.controller.js");
-  const { verificarToken, isBodeguero, isAdmin } = require("../middlewares/authJwt.js");
+  const { verificarToken, isDistrital } = require("../middlewares/authJwt.js");
   var router = require("express").Router();
   router.param("id", require("../middlewares/validarId.js"));
-  // Alta y edición de tipos de prenda: ADMIN o BODEGUERO. Eliminar: solo ADMIN (igual que las prendas).
-  router.post("/", [verificarToken, isBodeguero], categorias.create);
-  router.put("/:id", [verificarToken, isBodeguero], categorias.update);
-  router.delete("/:id", [verificarToken, isAdmin], categorias.delete);
+  // Tipos de prenda: parte del catálogo único, solo el DISTRITAL los crea, edita y elimina.
+  router.post("/", [verificarToken, isDistrital], categorias.create);
+  router.put("/:id", [verificarToken, isDistrital], categorias.update);
+  router.delete("/:id", [verificarToken, isDistrital], categorias.delete);
   router.get("/", categorias.findAll);
   app.use('/api/categorias', router);
 };

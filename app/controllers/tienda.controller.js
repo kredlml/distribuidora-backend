@@ -259,8 +259,13 @@ exports.miPedido = async (req, res) => {
       .filter(p => p.estado_pago === 'PENDIENTE' && p.metodo_pago !== 'STRIPE')
       .reduce((s, p) => s + Number(p.monto), 0);
     const saldo = Math.max(0, Math.round((Number(pedido.total) - pagado) * 100) / 100);
+    // Si hoy puede pedir cambio o devolución: una sola vez y dentro del plazo desde la entrega.
+    const politica = await devoluciones.politicaDevolucion(pedido);
     res.send({
       ...pedido.toJSON(),
+      devolucion_permitida: politica.permite,
+      devolucion_motivo: politica.motivo,
+      devolucion_vence: politica.vence,
       pagado,
       pago_en_proceso: enProceso,
       saldo,

@@ -3,6 +3,7 @@ const db = require("../models");
 const Cliente = db.cliente;
 const { registrarAuditoria } = require("../utils/auditoria");
 const { puestoDe } = require("../middlewares/authJwt.js");
+const { sucursalDe, whereClientesDeSucursal, clienteEnAlcance } = require("../utils/alcance");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Código de activación web: 8 caracteres sin los que se confunden (0/O, 1/I/L), válido 72 horas.
@@ -69,8 +70,11 @@ exports.create = async (req, res) => {
     const { datos, error } = await leerDatos({ ...body, activo: undefined }, { esAlta: true });
     if (error) return res.status(400).send({ message: error });
 
+    // Queda registrado en la sucursal de quien lo da de alta (el DISTRITAL puede indicar una).
+    const propia = sucursalDe(req);
+    const idSucursal = propia === null ? (Number(body.id_sucursal) > 0 ? Number(body.id_sucursal) : null) : propia > 0 ? propia : null;
     const cliente = await db.sequelize.transaction(async (t) => {
-      const c = await Cliente.create({ ...datos, activo: true }, { transaction: t });
+      const c = await Cliente.create({ ...datos, activo: true, id_sucursal: idSucursal }, { transaction: t });
       await registrarAuditoria({
         id_empleado: req.empleadoId, accion: 'CLIENTE_REGISTRADO', tabla_afectada: 'Cliente',
         registro_afectado_id: c.id_cliente, detalles: `Cliente #${c.id_cliente} (${c.nombre} ${c.apellido}) registrado en mostrador.`.slice(0, 255)
@@ -84,10 +88,24 @@ exports.create = async (req, res) => {
   }
 };
 
-// GET /api/clientes — lista para el panel (cualquier empleado). Indica si cada uno tiene cuenta web.
+// GET /api/clientes — lista para el panel. Indica si cada uno tiene cuenta web.
+// Cada sucursal ve a los clientes que registró y a los que le han comprado (el DISTRITAL, a todos).
+// GET /api/clientes?email=x — búsqueda exacta por correo en todas las sucursales, para atender a
+// una clienta registrada en otra: devuelve solo sus datos básicos (al venderle, pasa a ser visible).
 exports.findAll = async (req, res) => {
   try {
-    const data = await Cliente.scope("conPassword").findAll({ order: [['id_cliente', 'ASC']] });
+    if (req.query.email !== undefined) {
+      const email = String(req.query.email).trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) return res.status(400).send({ message: "Escribe el correo completo de la clienta." });
+      const c = await Cliente.scope("conPassword").findOne({ where: db.sequelize.where(db.sequelize.fn("lower", db.sequelize.col("email")), email) });
+      if (!c || c.activo === false) return res.send([]);
+      return res.send([{ id_cliente: c.id_cliente, nombre: c.nombre, apellido: c.apellido, email: c.email, activo: c.activo, tiene_cuenta_web: !!c.password }]);
+    }
+    const s = sucursalDe(req);
+    const data = await Cliente.scope("conPassword").findAll({
+      where: s === null ? {} : whereClientesDeSucursal(s),
+      order: [['id_cliente', 'ASC']]
+    });
     res.send(data.map((c) => publico(c)));
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al recuperar los clientes." });
@@ -101,11 +119,14 @@ exports.update = async (req, res) => {
   try {
     const body = req.body || {};
     const permitido = { nombre: body.nombre, apellido: body.apellido, telefono: body.telefono, direccion: body.direccion, email: body.email, activo: body.activo };
-    if (permitido.activo !== undefined && puestoDe(req.empleado) !== "ADMIN") {
+    if (permitido.activo !== undefined && !["ADMIN", "DISTRITAL"].includes(puestoDe(req.empleado))) {
       return res.status(403).send({ message: "Solo un ADMIN puede activar o desactivar clientes." });
     }
     const { datos, error } = await leerDatos(permitido, { esAlta: false, idExcluir: Number(req.params.id) });
     if (error) return res.status(400).send({ message: error });
+    if (!(await clienteEnAlcance(req, req.params.id))) {
+      return res.status(404).send({ message: `No se encontró el cliente con id=${req.params.id}.` });
+    }
     if (Object.keys(datos).length === 0) {
       return res.status(400).send({ message: "No se enviaron cambios (nombre, apellido, telefono, direccion, email, activo)." });
     }
@@ -147,6 +168,9 @@ exports.update = async (req, res) => {
 // reemplaza al anterior. Solo se guarda su hash.
 exports.generarCodigoWeb = async (req, res) => {
   try {
+    if (!(await clienteEnAlcance(req, req.params.id))) {
+      return res.status(404).send({ message: `No se encontró el cliente con id=${req.params.id}.` });
+    }
     const resultado = await db.sequelize.transaction(async (t) => {
       const cliente = await Cliente.scope("conCodigo").findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
       if (!cliente) return { status: 404, message: `No se encontró el cliente con id=${req.params.id}.` };

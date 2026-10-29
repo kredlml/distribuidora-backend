@@ -15,6 +15,9 @@ module.exports = (sequelize, Sequelize) => {
       defaultValue: Sequelize.NOW
     },
     activo: { type: Sequelize.BOOLEAN, allowNull: false, defaultValue: true },
+    // Sucursal donde se registró en mostrador (NULL si se registró en la tienda en línea). Cada
+    // sucursal ve a los clientes que registró y a los que le han comprado.
+    id_sucursal: { type: Sequelize.INTEGER, allowNull: true },
     // Hash bcrypt para la tienda en línea. NULL = cliente registrado en mostrador, sin cuenta web.
     password: { type: Sequelize.STRING, allowNull: true },
     // Código de un solo uso que entrega caja (en persona) para que un cliente de mostrador active

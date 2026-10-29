@@ -1,6 +1,5 @@
 main a.item.fila-pedido { text-decoration: none; color: inherit; align-items: center; border-radius: 12px; }
 a.fila-pedido:hover { background: var(--canvas); }
-.recargando { opacity: .5; pointer-events: none; transition: opacity .15s; }
 .num-pedido { font-weight: 400; color: var(--muted); }
 .total-pedido { min-width: 96px; text-align: right; }
 
@@ -16,6 +15,8 @@ a.fila-pedido:hover { background: var(--canvas); }
 .metodos label:has(input:checked) { border-color: var(--violet); background: #f4f1ff; }
 .metodos input { accent-color: var(--violet); }
 .vuelto { font-size: 18px; }
+.otra-sucursal { flex: 1; min-width: 240px; }
+.otra-sucursal .field { flex: 1; padding: 6px 14px; font-size: 14px; }
 .agregar-linea { display: grid; grid-template-columns: minmax(0, 1fr) 96px auto; gap: 8px; align-items: end; }
 .agregar-linea .field { margin-top: 4px; }
 

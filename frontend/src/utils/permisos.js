@@ -1,22 +1,29 @@
 // Reflejan los roles del backend; el servidor siempre valida.
+// DISTRITAL (gerente distrital) ve y opera todas las sucursales; ADMIN (gerente de sucursal),
+// CAJERO y BODEGUERO solo la suya. El catálogo (prendas y tipos) y las sucursales los maneja el DISTRITAL.
+const GERENTES = ["DISTRITAL", "ADMIN"];
 export const PERMISOS = {
-  aprobar: ["ADMIN"], rechazar: ["ADMIN"],
-  recibir: ["ADMIN", "BODEGUERO"], revisar: ["ADMIN", "BODEGUERO"],
-  reintegrar: ["ADMIN", "BODEGUERO"], cambiar: ["ADMIN", "BODEGUERO"],
-  crear: ["ADMIN", "CAJERO"],
-  catalogo: ["ADMIN", "BODEGUERO"],
-  // Sucursales: ver y ajustar stock ADMIN/BODEGUERO; crear, editar y eliminar sucursales solo ADMIN.
-  sucursales: ["ADMIN", "BODEGUERO"], ajustarStock: ["ADMIN", "BODEGUERO"], gestionarSucursales: ["ADMIN"],
-  empleados: ["ADMIN"],
+  aprobar: GERENTES, rechazar: GERENTES,
+  recibir: [...GERENTES, "BODEGUERO"], revisar: [...GERENTES, "BODEGUERO"],
+  reintegrar: [...GERENTES, "BODEGUERO"], cambiar: [...GERENTES, "BODEGUERO"],
+  crear: [...GERENTES, "CAJERO"],
+  // Catálogo y stock: lo abren gerentes y bodega; crear/editar prendas y tipos, solo el DISTRITAL.
+  catalogo: [...GERENTES, "BODEGUERO"], editarCatalogo: ["DISTRITAL"],
+  // Sucursales: ver y ajustar stock gerentes y bodega; abrir, editar o cerrar sucursales, el DISTRITAL.
+  sucursales: [...GERENTES, "BODEGUERO"], ajustarStock: [...GERENTES, "BODEGUERO"], gestionarSucursales: ["DISTRITAL"],
+  empleados: GERENTES,
+  reportes: GERENTES,
   // Pedidos: todos los ven; vender y cobrar es de caja; despachar y entregar, de bodega
   // (igual que PUESTOS_POR_ESTADO del backend). Clientes: caja. Proveedores: bodega.
-  vender: ["ADMIN", "CAJERO"], cobrar: ["ADMIN", "CAJERO"],
-  CANCELADO: ["ADMIN", "CAJERO"], ENVIADO: ["ADMIN", "BODEGUERO"], ENTREGADO: ["ADMIN", "BODEGUERO"],
-  clientes: ["ADMIN", "CAJERO"], activarCliente: ["ADMIN"],
-  proveedores: ["ADMIN", "BODEGUERO"], eliminarProveedor: ["ADMIN"],
+  vender: [...GERENTES, "CAJERO"], cobrar: [...GERENTES, "CAJERO"],
+  CANCELADO: [...GERENTES, "CAJERO"], ENVIADO: [...GERENTES, "BODEGUERO"], ENTREGADO: [...GERENTES, "BODEGUERO"],
+  clientes: [...GERENTES, "CAJERO"], activarCliente: GERENTES,
+  proveedores: [...GERENTES, "BODEGUERO"], eliminarProveedor: GERENTES,
+  // Ver todas las sucursales (filtros por sucursal, reportes globales).
+  todasLasSucursales: ["DISTRITAL"],
 };
 
-export const ROLES = ["ADMIN", "CAJERO", "BODEGUERO"];
+export const ROLES = ["DISTRITAL", "ADMIN", "CAJERO", "BODEGUERO"];
 export const rolDe = (sesion) => ((sesion || {}).puesto || "").trim().toUpperCase();
 export const puede = (rol, accion) => PERMISOS[accion].includes(rol);
 

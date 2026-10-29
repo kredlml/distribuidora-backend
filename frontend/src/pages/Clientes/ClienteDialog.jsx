@@ -1,4 +1,5 @@
 import Modal from "../../components/Modal";
+import Select from "../../components/Select";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import useSubmit from "../../hooks/useSubmit";
@@ -10,16 +11,20 @@ import { puede } from "../../utils/permisos";
  * Alta (sin `cliente`) o edición de un cliente de mostrador. `onDone(cliente)` recibe el cliente
  * creado/actualizado (Nueva venta lo selecciona directamente).
  */
-export default function ClienteDialog({ cliente: c, onClose, onDone }) {
+export default function ClienteDialog({ cliente: c, sucursales = [], sucursalFija, onClose, onDone }) {
   const { rol } = useAuth();
   const aviso = useToast();
   const conCuenta = !!(c && c.tiene_cuenta_web);
+  // El distrital indica en qué sucursal se registra (para que esa sucursal la vea); los demás
+  // registran en la suya. Desde Nueva venta se usa la sucursal de la venta.
+  const eligeSucursal = !c && puede(rol, "todasLasSucursales") && !sucursalFija;
   const { error, enviando, onSubmit } = useSubmit(async (fd) => {
     const body = {
       nombre: fd.get("nombre").trim(), apellido: fd.get("apellido").trim(),
       telefono: fd.get("telefono").trim() || null, direccion: fd.get("direccion").trim() || null,
     };
     if (!conCuenta) body.email = fd.get("email").trim().toLowerCase() || null;
+    if (!c && puede(rol, "todasLasSucursales")) body.id_sucursal = sucursalFija || Number(fd.get("id_sucursal")) || undefined;
     if (c) {
       if (puede(rol, "activarCliente")) body.activo = fd.get("activo") === "on";
       const cambios = soloCambios(body, { ...c, activo: c.activo !== false });
@@ -38,6 +43,12 @@ export default function ClienteDialog({ cliente: c, onClose, onDone }) {
     <Modal onClose={onClose}>
       <form onSubmit={onSubmit}>
         <h1>{c ? `Editar cliente #${c.id_cliente}` : "Nuevo cliente"}</h1>
+        {eligeSucursal && (
+          <label className="sm muted">Sucursal donde se registra
+            <Select className="field" name="id_sucursal" required placeholder="Elige la sucursal"
+              options={sucursales.filter((s) => s.activo !== false).map((s) => [s.id_sucursal, s.nombre])} />
+          </label>
+        )}
         <div className="grid2">
           <label className="sm muted">Nombre<input className="field" name="nombre" maxLength={80} required defaultValue={c ? c.nombre : ""} /></label>
           <label className="sm muted">Apellido<input className="field" name="apellido" maxLength={80} required defaultValue={c ? c.apellido : ""} /></label>

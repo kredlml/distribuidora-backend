@@ -2,8 +2,11 @@ const jwt = require("jsonwebtoken");
 const db = require("../models");
 const Empleado = db.empleado;
 
-// Puestos que reconocen los controles de rol (isAdmin, isCajero, isBodeguero).
-exports.PUESTOS_VALIDOS = ["ADMIN", "CAJERO", "BODEGUERO"];
+// Puestos que reconocen los controles de rol. DISTRITAL (gerente distrital) está por encima del
+// ADMIN (gerente de una sucursal): ve y opera todas las sucursales y es el único que maneja el
+// catálogo, las sucursales y la auditoría. ADMIN, CAJERO y BODEGUERO trabajan solo con los datos
+// de su propia sucursal (ver app/utils/alcance.js).
+exports.PUESTOS_VALIDOS = ["DISTRITAL", "ADMIN", "CAJERO", "BODEGUERO"];
 
 const puestoDe = (empleado) => String((empleado && empleado.puesto) || "").trim().toUpperCase();
 exports.puestoDe = puestoDe;
@@ -89,7 +92,9 @@ function exigirPuesto(puestos, mensaje) {
   };
 }
 
-exports.isAdmin = exigirPuesto(["ADMIN"], "¡Acceso denegado! Esta acción requiere privilegios de Administrador.");
+exports.isDistrital = exigirPuesto(["DISTRITAL"], "¡Acceso denegado! Esta acción es solo del gerente distrital.");
+
+exports.isAdmin = exigirPuesto(["ADMIN", "DISTRITAL"], "¡Acceso denegado! Esta acción requiere privilegios de Administrador.");
 
 
 // Registro de empleados: con la base vacía, el primer empleado puede registrarse sin token
@@ -107,7 +112,7 @@ exports.permitirRegistro = async (req, res, next) => {
 };
 
 
-exports.isCajero = exigirPuesto(["CAJERO", "ADMIN"], "¡Acceso denegado! Solo los cajeros autorizados pueden realizar ventas.");
+exports.isCajero = exigirPuesto(["CAJERO", "ADMIN", "DISTRITAL"], "¡Acceso denegado! Solo los cajeros autorizados pueden realizar ventas.");
 
 
-exports.isBodeguero = exigirPuesto(["BODEGUERO", "ADMIN"], "¡Acceso denegado! Solo el personal de bodega puede alterar el inventario.");
+exports.isBodeguero = exigirPuesto(["BODEGUERO", "ADMIN", "DISTRITAL"], "¡Acceso denegado! Solo el personal de bodega puede alterar el inventario.");

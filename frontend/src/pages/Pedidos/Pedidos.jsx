@@ -48,8 +48,10 @@ export default function Pedidos() {
       <ChipBar items={[["", "Todos"], ...Object.entries(ESTADOS_PEDIDO)]} value={f.estado} onChange={(v) => cambiar("estado", v)} />
       <div className="bar">
         <Select className="pill" aria-label="Origen" value={f.origen} placeholder="Tienda y mostrador" onChange={(ev) => cambiar("origen", ev.target.value)} options={ORIGENES} />
-        <Select className="pill" aria-label="Sucursal" value={f.id_sucursal} placeholder="Todas las sucursales" onChange={(ev) => cambiar("sucursal", ev.target.value)}
-          options={(sucs.data || []).map((s) => [s.id_sucursal, s.nombre])} />
+        {puede(rol, "todasLasSucursales") && (
+          <Select className="pill" aria-label="Sucursal" value={f.id_sucursal} placeholder="Todas las sucursales" onChange={(ev) => cambiar("sucursal", ev.target.value)}
+            options={(sucs.data || []).map((s) => [s.id_sucursal, s.nombre])} />
+        )}
       </div>
       <div className="stack">
         {loading && !data ? <Cargando>Cargando pedidos…</Cargando>

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import Select from "../../components/Select";
-import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import useSubmit from "../../hooks/useSubmit";
 import * as productosService from "../../services/productosService";
@@ -8,8 +7,7 @@ import { prod, vacioANull } from "../../utils/format";
 import EditarPrendaDialog from "./EditarPrendaDialog";
 import EliminarPrendaDialog from "./EliminarPrendaDialog";
 
-export default function PrendasTab({ cats, prods, reload }) {
-  const { rol } = useAuth();
+export default function PrendasTab({ cats, prods, reload, edita }) {
   const aviso = useToast();
   const [editando, setEditando] = useState(null);
   const [eliminando, setEliminando] = useState(null);
@@ -35,7 +33,7 @@ export default function PrendasTab({ cats, prods, reload }) {
 
   return (
     <>
-      <form className="card stack" onSubmit={onSubmit}>
+      {edita && <form className="card stack" onSubmit={onSubmit}>
         <h2>Nueva prenda</h2>
         <label className="sm muted">Nombre<input className="field" name="nombre" maxLength={120} required /></label>
         <label className="sm muted">Tipo de prenda
@@ -57,7 +55,7 @@ export default function PrendasTab({ cats, prods, reload }) {
         <label className="sm muted">URL de la imagen (opcional, se muestra en la tienda en línea)<input className="field" name="imagen_url" type="url" maxLength={500} placeholder="https://..." /></label>
         <div className="err" role="alert">{error}</div>
         <div><button className="btn pri" disabled={enviando}>Registrar prenda</button></div>
-      </form>
+      </form>}
 
       <section className="card">
         <h2>Prendas registradas ({prods.length})</h2>
@@ -69,8 +67,8 @@ export default function PrendasTab({ cats, prods, reload }) {
             </div>
             <div className="ctl">
               <span>{Number(p.precio_unitario).toFixed(2)}</span>
-              <button className="btn mini" onClick={() => setEditando(p)}>Editar</button>
-              {rol === "ADMIN" && <button className="btn mini bad" onClick={() => setEliminando(p)}>Eliminar</button>}
+              {edita && <button className="btn mini" onClick={() => setEditando(p)}>Editar</button>}
+              {edita && <button className="btn mini bad" onClick={() => setEliminando(p)}>Eliminar</button>}
             </div>
           </div>
         ))}

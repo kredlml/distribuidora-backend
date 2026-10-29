@@ -12,7 +12,9 @@ module.exports = (sequelize, Sequelize) => {
     id_sucursal: { type: Sequelize.INTEGER, allowNull: false },
     id_empleado: { type: Sequelize.INTEGER },
     // Dirección a la que se despacha (pedidos de la tienda en línea). NULL en ventas de mostrador.
-    direccion_entrega: { type: Sequelize.STRING(200), allowNull: true }
+    direccion_entrega: { type: Sequelize.STRING(200), allowNull: true },
+    // Momento en que se marcó ENTREGADO: desde ahí corre el plazo para pedir cambio o devolución.
+    fecha_entrega: { type: Sequelize.DATE, allowNull: true }
   }, {
     tableName: 'Pedido',
     timestamps: false

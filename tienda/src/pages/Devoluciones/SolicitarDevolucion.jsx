@@ -104,7 +104,7 @@ export default function SolicitarDevolucion() {
     <>
       <Link to={`/pedidos/${id}`} className="back">← Pedido #{id}</Link>
       <div className="head"><h1>Cambio o devolución</h1></div>
-      {!d.devolvible.permite_devolucion ? <Vacio>Solo puedes pedir cambios o devoluciones de pedidos entregados.</Vacio>
+      {!d.devolvible.permite_devolucion ? <Vacio>{d.devolvible.mensaje || "Solo puedes pedir cambios o devoluciones de pedidos entregados."}</Vacio>
         : lineas.length === 0 ? <Vacio>Ya solicitaste cambio o devolución de todas las prendas de este pedido.</Vacio>
         : (
           <form className="card stack" onSubmit={enviar}>
@@ -165,6 +165,7 @@ export default function SolicitarDevolucion() {
               <textarea className="field" maxLength={255} value={observacion} onChange={(e) => setObservacion(e.target.value)} placeholder="Cuéntanos qué pasó con la prenda" />
             </label>
             <p className="muted sm">Revisaremos tu solicitud. Si la aprobamos, entrega o envía la prenda a la sucursal; tras revisarla, procesamos el cambio o la devolución.</p>
+            <p className="sm"><b>Solo puedes enviar una solicitud por pedido</b>: incluye aquí todas las prendas que quieras cambiar o devolver.</p>
             <div className="err" role="alert">{error}</div>
             <div><button className="btn pri" disabled={enviando}>{enviando ? "Enviando…" : "Enviar solicitud"}</button></div>
           </form>

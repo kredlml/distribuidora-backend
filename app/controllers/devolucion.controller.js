@@ -9,6 +9,28 @@ const MovimientoInventario = db.movimiento_inventario;
 const Op = db.Sequelize.Op;
 const { ESTADOS, validarTransicion, esEstadoFinal } = require("../utils/estadosDevolucion");
 const { registrarAuditoria } = require("../utils/auditoria");
+const { whereSucursal } = require("../utils/alcance");
+
+// Política de cambios y devoluciones: UNA sola solicitud por pedido (aunque la rechacen), y solo
+// dentro de las HORAS_PLAZO horas siguientes a la entrega (Pedido.fecha_entrega).
+const HORAS_PLAZO = Number(process.env.HORAS_PLAZO_DEVOLUCION) > 0 ? Number(process.env.HORAS_PLAZO_DEVOLUCION) : 24;
+const venceEl = (pedido) => (pedido.fecha_entrega ? new Date(new Date(pedido.fecha_entrega).getTime() + HORAS_PLAZO * 3600 * 1000) : null);
+
+// Revisa si el pedido admite hoy una solicitud. Devuelve { permite, motivo, mensaje, vence }.
+async function politicaDevolucion(pedido, t) {
+  const vence = venceEl(pedido);
+  if (pedido.estado !== 'ENTREGADO') {
+    return { permite: false, motivo: 'NO_ENTREGADO', vence, mensaje: "Solo se pueden solicitar devoluciones o cambios sobre pedidos ya entregados." };
+  }
+  const previas = await Devolucion.count({ where: { id_pedido: pedido.id_pedido }, transaction: t });
+  if (previas > 0) {
+    return { permite: false, motivo: 'YA_SOLICITADO', vence, mensaje: "Este pedido ya tuvo su solicitud de cambio o devolución: solo se permite una por pedido." };
+  }
+  if (!vence || new Date() > vence) {
+    return { permite: false, motivo: 'PLAZO_VENCIDO', vence, mensaje: `El plazo para pedir un cambio o una devolución es de ${HORAS_PLAZO} horas desde la entrega y ya venció.` };
+  }
+  return { permite: true, motivo: null, vence, mensaje: null };
+}
 
 // Registra un movimiento de inventario dentro de una transacción. El historial
 // es de solo-creación: este es el único lugar del proyecto donde se debe
@@ -99,6 +121,8 @@ async function descontarDisponible({ id_producto, id_sucursal, cantidad }, t) {
   }
 }
 
+exports.politicaDevolucion = politicaDevolucion;
+
 // POST /api/devoluciones — el cliente (o quien tome el pedido en tienda) registra la solicitud.
 exports.create = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -109,15 +133,17 @@ exports.create = async (req, res) => {
       throw new Error("id_pedido, id_cliente, tipo, motivo y al menos un detalle son obligatorios.");
     }
 
-    const pedido = await Pedido.findByPk(id_pedido, { transaction: t });
+    // El pedido se bloquea: dos solicitudes simultáneas se ordenan y la segunda ve a la primera.
+    const pedido = await Pedido.findByPk(id_pedido, { transaction: t, lock: t.LOCK.UPDATE });
     if (!pedido) {
       throw new Error("El pedido indicado no existe.");
     }
     if (Number(pedido.id_cliente) !== Number(id_cliente)) {
       throw new Error("El pedido no pertenece al cliente indicado.");
     }
-    if (pedido.estado !== 'ENTREGADO') {
-      throw new Error("Solo se pueden solicitar devoluciones o cambios sobre pedidos ya entregados.");
+    const politica = await politicaDevolucion(pedido, t);
+    if (!politica.permite) {
+      throw new Error(politica.mensaje);
     }
 
     const nuevaDevolucion = await Devolucion.create({
@@ -220,11 +246,14 @@ exports.findAll = async (req, res) => {
       if (hasta) where.fecha_solicitud[Op.lte] = new Date(`${hasta}T23:59:59.999`);
     }
 
+    // Solo devoluciones de pedidos de la propia sucursal (el DISTRITAL, todas).
+    const alcance = req.empleado ? whereSucursal(req) : {};
     const data = await Devolucion.findAll({
       where,
       include: [
         { model: db.cliente, attributes: ['id_cliente', 'nombre', 'apellido'] },
-        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
+        { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] },
+        ...(Object.keys(alcance).length ? [{ model: Pedido, attributes: [], where: alcance }] : [])
       ],
       order: [['id_devolucion', 'DESC']]
     });
@@ -268,7 +297,7 @@ exports.findOne = async (req, res) => {
 exports.devolvible = async (req, res) => {
   try {
     const pedido = await Pedido.findByPk(req.params.id_pedido, {
-      attributes: ['id_pedido', 'id_cliente', 'id_sucursal', 'estado'],
+      attributes: ['id_pedido', 'id_cliente', 'id_sucursal', 'estado', 'fecha_entrega'],
       include: [{
         model: DetallePedido,
         include: [{ model: Producto, attributes: ['nombre', 'talla', 'color'] }]
@@ -295,13 +324,19 @@ exports.devolvible = async (req, res) => {
       solicitadoPorLinea[d.id_detalle_pedido] = (solicitadoPorLinea[d.id_detalle_pedido] || 0) + d.cantidad;
     }
 
-    const permite = pedido.estado === 'ENTREGADO';
+    const politica = await politicaDevolucion(pedido);
+    const permite = politica.permite;
     res.send({
       id_pedido: pedido.id_pedido,
       id_cliente: pedido.id_cliente,
       id_sucursal: pedido.id_sucursal,
       estado_pedido: pedido.estado,
       permite_devolucion: permite,
+      // Por qué no se permite (NO_ENTREGADO, YA_SOLICITADO, PLAZO_VENCIDO) y hasta cuándo se puede.
+      motivo_no_permite: politica.motivo,
+      mensaje: politica.mensaje,
+      plazo_vence: politica.vence,
+      horas_plazo: HORAS_PLAZO,
       detalles: lineas.map(l => {
         const solicitada = solicitadoPorLinea[l.id_detalle_pedido] || 0;
         return {

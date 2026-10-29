@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import useSubmit from "../../hooks/useSubmit";
 import * as categoriasService from "../../services/categoriasService";
@@ -7,8 +6,7 @@ import { vacioANull } from "../../utils/format";
 import EditarTipoDialog from "./EditarTipoDialog";
 import EliminarTipoDialog from "./EliminarTipoDialog";
 
-export default function TiposTab({ cats, prods, reload }) {
-  const { rol } = useAuth();
+export default function TiposTab({ cats, prods, reload, edita }) {
   const aviso = useToast();
   const [editando, setEditando] = useState(null);
   const [eliminando, setEliminando] = useState(null);
@@ -26,13 +24,13 @@ export default function TiposTab({ cats, prods, reload }) {
 
   return (
     <>
-      <form className="card stack" onSubmit={onSubmit}>
+      {edita && <form className="card stack" onSubmit={onSubmit}>
         <h2>Nuevo tipo de prenda</h2>
         <label className="sm muted">Nombre<input className="field" name="nombre" maxLength={60} required /></label>
         <label className="sm muted">Descripción (opcional)<input className="field" name="descripcion" maxLength={200} /></label>
         <div className="err" role="alert">{error}</div>
         <div><button className="btn pri" disabled={enviando}>Crear tipo de prenda</button></div>
-      </form>
+      </form>}
       <section className="card">
         <h2>Tipos registrados ({cats.length})</h2>
         {cats.length ? cats.map((c) => {
@@ -40,10 +38,12 @@ export default function TiposTab({ cats, prods, reload }) {
           return (
             <div className="item" key={c.id_categoria}>
               <div>{c.nombre}<br /><span className="muted sm">{c.descripcion || "Sin descripción"}, {n} prenda{n === 1 ? "" : "s"}</span></div>
-              <div className="ctl">
-                <button className="btn mini" onClick={() => setEditando(c)}>Editar</button>
-                {rol === "ADMIN" && <button className="btn mini bad" onClick={() => setEliminando({ ...c, prendas: n })}>Eliminar</button>}
-              </div>
+              {edita && (
+                <div className="ctl">
+                  <button className="btn mini" onClick={() => setEditando(c)}>Editar</button>
+                  <button className="btn mini bad" onClick={() => setEliminando({ ...c, prendas: n })}>Eliminar</button>
+                </div>
+              )}
             </div>
           );
         }) : <p className="muted">Aún no hay tipos de prenda.</p>}
