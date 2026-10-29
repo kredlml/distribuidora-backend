@@ -51,7 +51,7 @@ export default function Prenda() {
     <>
       <button className="back" onClick={() => navigate(-1)}><Icon name="back" /> Volver</button>
       <div className="ficha">
-        <div className="ficha-foto"><Imagen src={v.imagen_url || p.imagen_url} alt={p.nombre} /></div>
+        <div className="ficha-foto"><Imagen src={v.imagen_url || p.imagen_url} alt={p.nombre} ancho={1000} /></div>
         <section className="ficha-info">
           <div className="muted sm">{p.categoria ? p.categoria.nombre : ""}</div>
           <h1>{p.nombre}</h1>

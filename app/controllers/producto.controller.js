@@ -2,6 +2,7 @@ const db = require("../models");
 const Producto = db.producto;
 const { registrarAuditoria } = require("../utils/auditoria");
 const { sucursalDe } = require("../utils/alcance");
+const { borrarSiNadieLaUsa } = require("./imagen.controller");
 
 // imagen_url: vacío/null = sin imagen; si viene, debe ser una URL http(s) de hasta 500 caracteres.
 // Devuelve { valor } o { error }.
@@ -172,6 +173,7 @@ exports.update = async (req, res) => {
       .map((k) => `${k}: ${producto[k] ?? "vacío"} → ${cambios[k] ?? "vacío"}`);
     if (diffs.length === 0) return res.send(producto); // nada cambió: no se audita
 
+    const fotoAnterior = producto.imagen_url;
     await db.sequelize.transaction(async (t) => {
       await producto.update(cambios, { transaction: t });
       await registrarAuditoria({
@@ -180,6 +182,10 @@ exports.update = async (req, res) => {
         detalles: `Producto #${producto.id_producto} actualizado. ${diffs.join("; ")}`.slice(0, 255)
       }, t);
     });
+    // Si se cambió o quitó la foto, la anterior se borra de Cloudinary (si ninguna otra prenda la usa).
+    if (cambios.imagen_url !== undefined && fotoAnterior && fotoAnterior !== producto.imagen_url) {
+      borrarSiNadieLaUsa(fotoAnterior).catch(() => {});
+    }
     res.send(producto);
   } catch (error) {
     res.status(500).send({ message: error.message || "Error al actualizar el Producto." });
@@ -221,6 +227,7 @@ exports.delete = async (req, res) => {
         registro_afectado_id: Number(id), detalles: `Producto #${id} (${producto.nombre}) eliminado.`.slice(0, 255)
       }, t);
     });
+    if (producto.imagen_url) borrarSiNadieLaUsa(producto.imagen_url).catch(() => {});
     res.send({ message: `Prenda #${id} eliminada.` });
   } catch (error) {
     if (error.name === "SequelizeForeignKeyConstraintError") {

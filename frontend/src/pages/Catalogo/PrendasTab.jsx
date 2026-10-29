@@ -1,4 +1,5 @@
 import { useState } from "react";
+import FotoPrenda from "../../components/FotoPrenda";
 import Select from "../../components/Select";
 import { useToast } from "../../context/ToastContext";
 import useSubmit from "../../hooks/useSubmit";
@@ -11,6 +12,7 @@ export default function PrendasTab({ cats, prods, reload, edita }) {
   const aviso = useToast();
   const [editando, setEditando] = useState(null);
   const [eliminando, setEliminando] = useState(null);
+  const [foto, setFoto] = useState("");
   const bases = prods.filter((p) => !p.id_producto_padre);
   const nombreCat = (id) => (cats.find((c) => c.id_categoria === id) || {}).nombre || "Sin tipo";
 
@@ -25,6 +27,7 @@ export default function PrendasTab({ cats, prods, reload, edita }) {
     });
     aviso(`Prenda #${r.id_producto} registrada.`);
     form.reset();
+    setFoto("");
     reload();
   });
 
@@ -52,7 +55,7 @@ export default function PrendasTab({ cats, prods, reload, edita }) {
           <Select className="field" name="id_producto_padre" placeholder="Ninguna, es una prenda base" options={bases.map((p) => [p.id_producto, `#${p.id_producto} ${prod(p)}`])} />
         </label>
         <label className="sm muted">Descripción (opcional)<textarea className="field" name="descripcion" maxLength={255} /></label>
-        <label className="sm muted">URL de la imagen (opcional, se muestra en la tienda en línea)<input className="field" name="imagen_url" type="url" maxLength={500} placeholder="https://..." /></label>
+        <FotoPrenda value={foto} onChange={setFoto} />
         <div className="err" role="alert">{error}</div>
         <div><button className="btn pri" disabled={enviando}>Registrar prenda</button></div>
       </form>}

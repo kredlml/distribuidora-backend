@@ -92,3 +92,11 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 12px; margin-top: 
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .recargando { opacity: .5; pointer-events: none; transition: opacity .15s; }
+
+/* Foto de prenda (Catálogo) */
+.foto-prenda { display: grid; gap: 6px; }
+.foto-fila { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.foto-vista { width: 96px; height: 120px; border-radius: 16px; background: var(--canvas); display: grid; place-items: center; overflow: hidden; flex: none; text-align: center; padding: 4px; }
+.foto-vista img { width: 100%; height: 100%; object-fit: cover; }
+.foto-acciones { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.enlace { background: none; border: 0; padding: 0; color: var(--violet); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }

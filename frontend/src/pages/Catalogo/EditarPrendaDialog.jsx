@@ -1,3 +1,5 @@
+import { useState } from "react";
+import FotoPrenda from "../../components/FotoPrenda";
 import Modal from "../../components/Modal";
 import Select from "../../components/Select";
 import { useToast } from "../../context/ToastContext";
@@ -9,6 +11,7 @@ export default function EditarPrendaDialog({ prenda: p, cats, prods, onClose, on
   const aviso = useToast();
   const bases = prods.filter((x) => !x.id_producto_padre && x.id_producto !== p.id_producto);
   const tieneVar = prods.some((x) => x.id_producto_padre === p.id_producto);
+  const [foto, setFoto] = useState(p.imagen_url || "");
 
   const { error, enviando, onSubmit } = useSubmit(async (fd) => {
     const body = {
@@ -45,8 +48,8 @@ export default function EditarPrendaDialog({ prenda: p, cats, prods, onClose, on
         </label>
         {tieneVar && <div className="muted sm">Esta prenda tiene variantes, por eso no puede ser variante de otra.</div>}
         <label className="sm muted">Descripción<textarea className="field" name="descripcion" maxLength={255} defaultValue={p.descripcion || ""} /></label>
-        <label className="sm muted">URL de la imagen (tienda en línea)<input className="field" name="imagen_url" type="url" maxLength={500} placeholder="https://..." defaultValue={p.imagen_url || ""} /></label>
-        {p.imagen_url && <img src={p.imagen_url} alt="" style={{ maxHeight: 120, borderRadius: 16, objectFit: "cover" }} />}
+        <FotoPrenda value={foto} onChange={setFoto} />
+        {p.id_producto_padre && !foto && <p className="muted sm">Sin foto propia, la tienda muestra la de la prenda base.</p>}
         <label className="chk"><input type="checkbox" name="activo" defaultChecked={!!p.activo} /><span>Prenda activa (se puede vender y usar en cambios)</span></label>
         <div className="err" role="alert">{error}</div>
         <div className="acts">

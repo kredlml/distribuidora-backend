@@ -51,6 +51,7 @@ require("./app/routes/auth.routes")(app);
 require("./app/routes/devolucion.routes")(app);
 require("./app/routes/auditoria.routes")(app);
 require("./app/routes/tienda.routes")(app);
+require("./app/routes/imagen.routes")(app);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
