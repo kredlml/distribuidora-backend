@@ -50,6 +50,9 @@ db.movimiento_inventario = require("./movimiento_inventario.model.js")(sequelize
 db.auditoria = require("./auditoria.model.js")(sequelize, Sequelize);
 db.reembolso = require("./reembolso.model.js")(sequelize, Sequelize);
 db.cupon = require("./cupon.model.js")(sequelize, Sequelize);
+db.comprobante = require("./comprobante.model.js")(sequelize, Sequelize);
+db.detalle_comprobante = require("./detalle_comprobante.model.js")(sequelize, Sequelize);
+db.contador_comprobante = require("./contador_comprobante.model.js")(sequelize, Sequelize);
 db.empleado.belongsTo(db.sucursal, { foreignKey: 'id_sucursal' });
 
 db.sucursal.hasMany(db.empleado, { foreignKey: 'id_sucursal' });
@@ -135,5 +138,20 @@ db.cupon.hasMany(db.pedido, { foreignKey: 'id_cupon' });
 db.pedido.belongsTo(db.cupon, { foreignKey: 'id_cupon' });
 db.sucursal.hasMany(db.cupon, { foreignKey: 'id_sucursal' });
 db.cupon.belongsTo(db.sucursal, { foreignKey: 'id_sucursal' });
+
+// 12. Comprobantes de entrada y salida de mercadería. Son documentos permanentes: RESTRICT impide
+// borrar una sucursal, prenda o proveedor que aparezca en alguno (se desactivan en su lugar).
+const restringir = { onDelete: 'RESTRICT', onUpdate: 'CASCADE' };
+db.comprobante.belongsTo(db.sucursal, { foreignKey: 'id_sucursal', ...restringir });
+db.comprobante.belongsTo(db.empleado, { foreignKey: 'id_empleado', ...restringir });
+db.comprobante.belongsTo(db.proveedor, { foreignKey: 'id_proveedor', ...restringir });
+db.proveedor.hasMany(db.comprobante, { foreignKey: 'id_proveedor', ...restringir });
+db.comprobante.belongsTo(db.pedido, { foreignKey: 'id_pedido', ...restringir });
+db.pedido.hasMany(db.comprobante, { foreignKey: 'id_pedido', ...restringir });
+db.comprobante.belongsTo(db.devolucion, { foreignKey: 'id_devolucion', ...restringir });
+db.devolucion.hasMany(db.comprobante, { foreignKey: 'id_devolucion', ...restringir });
+db.comprobante.hasMany(db.detalle_comprobante, { foreignKey: 'id_comprobante', as: 'lineas', ...restringir });
+db.detalle_comprobante.belongsTo(db.comprobante, { foreignKey: 'id_comprobante', ...restringir });
+db.detalle_comprobante.belongsTo(db.producto, { foreignKey: 'id_producto', ...restringir });
 
 module.exports = db;

@@ -104,17 +104,19 @@ exports.delete = async (req, res) => {
       const sucursal = await Sucursal.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
       if (!sucursal) return { status: 404, message: `No se encontró la sucursal con id=${id}.` };
       const where = { id_sucursal: sucursal.id_sucursal };
-      const [empleados, inventario, pedidos, clientes] = await Promise.all([
+      const [empleados, inventario, pedidos, clientes, comprobantes] = await Promise.all([
         db.empleado.count({ where, transaction: t }),
         db.inventario.count({ where, transaction: t }),
         db.pedido.count({ where, transaction: t }),
-        db.cliente.count({ where, transaction: t })
+        db.cliente.count({ where, transaction: t }),
+        db.comprobante.count({ where, transaction: t })
       ]);
       const motivos = [];
       if (empleados) motivos.push(`tiene ${empleados} empleado(s) asignado(s)`);
       if (clientes) motivos.push(`tiene ${clientes} cliente(s) registrado(s)`);
       if (inventario) motivos.push("tiene registros de inventario");
       if (pedidos) motivos.push(`tiene ${pedidos} pedido(s)`);
+      if (comprobantes) motivos.push(`tiene ${comprobantes} comprobante(s) de mercadería`);
       if (motivos.length) {
         return {
           status: 409,

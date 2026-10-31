@@ -22,6 +22,7 @@ export default function Rail() {
   enlaces.push(
     ["/trazabilidad", "Trazabilidad", "route", pathname.startsWith("/trazabilidad")],
     ["/inventario", "Inventario", "box", pathname === "/inventario"],
+    ["/comprobantes", "Comprobantes", "doc", pathname === "/comprobantes"],
   );
   if (PERMISOS.catalogo.includes(rol)) enlaces.push(["/catalogo", "Catálogo y stock", "tag", pathname === "/catalogo"]);
   if (PERMISOS.sucursales.includes(rol)) enlaces.push(["/sucursales", "Sucursales", "store", pathname === "/sucursales"]);

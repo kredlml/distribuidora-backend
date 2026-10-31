@@ -6,6 +6,7 @@ module.exports = app => {
 
   // Ingreso de stock y bajas (ajustes): ADMIN o BODEGUERO.
   router.post("/", [verificarToken, isBodeguero], inventarios.create);
+  router.post("/ingresos", [verificarToken, isBodeguero], inventarios.ingresar);
   router.post("/ajustes", [verificarToken, isBodeguero], inventarios.ajustar);
 
   router.get("/", verificarToken, inventarios.findAll);

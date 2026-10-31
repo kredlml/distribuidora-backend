@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import ComprobantesDe from "../../components/ComprobantesDe";
 import { Cargando, ErrorCard } from "../../components/Estado";
 import Reembolsos from "../../components/Reembolsos";
 import { useAuth } from "../../context/AuthContext";
@@ -184,6 +185,9 @@ export default function PedidoDetalle() {
             </div>
           )) : <p className="muted">Sin pagos registrados.</p>}
         </section>
+
+        {/* Salida de la venta (al pagarse) y entradas/salidas de sus devoluciones o cambios. */}
+        {!pendiente && <ComprobantesDe filtro={{ id_pedido: p.id_pedido }} version={`${p.estado}-${(p.Devolucions || []).map((d) => d.estado).join()}`} />}
 
         {(p.Devolucions || []).length > 0 && (
           <section className="card">

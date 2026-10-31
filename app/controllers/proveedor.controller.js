@@ -83,13 +83,16 @@ exports.update = async (req, res) => {
   }
 };
 
-// DELETE /api/proveedores/:id — los proveedores no se relacionan con otros registros, así que
-// se pueden eliminar (solo ADMIN). Para dejar de usarlo conservando el dato, desactivarlo.
+// DELETE /api/proveedores/:id — solo ADMIN, y solo si el proveedor no aparece en ningún comprobante
+// de entrada (la llave foránea lo impide y se responde 409). Para dejar de usarlo, desactivarlo.
 exports.delete = async (req, res) => {
   try {
     const nombre = await db.sequelize.transaction(async (t) => {
       const p = await Proveedor.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
       if (!p) return null;
+      if (await db.comprobante.count({ where: { id_proveedor: p.id_proveedor }, transaction: t })) {
+        const e = new Error("con comprobantes"); e.name = "SequelizeForeignKeyConstraintError"; throw e;
+      }
       await p.destroy({ transaction: t });
       await registrarAuditoria({
         id_empleado: req.empleadoId, accion: 'PROVEEDOR_ELIMINADO', tabla_afectada: 'Proveedor',
@@ -101,7 +104,7 @@ exports.delete = async (req, res) => {
     res.send({ message: `Proveedor «${nombre}» eliminado.` });
   } catch (error) {
     if (error.name === "SequelizeForeignKeyConstraintError") {
-      return res.status(409).send({ message: "No se puede eliminar: el proveedor tiene registros asociados. Desactívalo desde Editar." });
+      return res.status(409).send({ message: "No se puede eliminar: el proveedor aparece en comprobantes de entrada de mercadería. Desactívalo desde Editar." });
     }
     res.status(500).send({ message: error.message || "Error al eliminar el Proveedor." });
   }

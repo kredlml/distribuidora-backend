@@ -93,6 +93,33 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 12px; margin-top: 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .recargando { opacity: .5; pointer-events: none; transition: opacity .15s; }
 
+/* Comprobantes de entrada y salida (diálogo, listado e ingreso de mercadería) */
+dialog.ancho { width: min(760px, 94vw); }
+.comprobante .head { margin-bottom: 0; }
+.comprobante .kv { margin-top: 0; }
+.folio { font-size: 28px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.comprobante .tabla-scroll, .comprobantes .tabla-scroll { overflow-x: auto; }
+.tabla-comprobante { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.tabla-comprobante th { text-align: left; font-weight: 400; font-size: 12px; color: var(--muted); padding: 0 8px 8px 0; }
+.tabla-comprobante td { padding: 10px 8px 10px 0; border-top: 1px solid var(--border); vertical-align: top; }
+.tabla-comprobante tfoot td { font-weight: 600; }
+.tabla-comprobante .num { text-align: right; white-space: nowrap; }
+.fila-comprobante { display: grid; grid-template-columns: minmax(110px, auto) minmax(0, 1fr) auto; gap: 16px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); padding: 12px 0; cursor: pointer; }
+.fila-comprobante:first-of-type { border-top: 0; }
+.fila-comprobante:hover .folio-mini { color: var(--violet); }
+.folio-mini { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fila-comprobante .num { text-align: right; font-variant-numeric: tabular-nums; }
+.aviso-comprobante { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: var(--canvas); border-radius: 20px; padding: 12px 16px; margin-bottom: 12px; }
+.linea-ingreso { display: grid; grid-template-columns: minmax(0, 2.4fr) 90px minmax(0, 1fr) minmax(0, 1fr) 110px auto; gap: 8px; align-items: end; }
+.linea-ingreso .field { padding: 8px 12px; font-size: 14px; }
+.lineas-ingreso { display: grid; gap: 10px; }
+@media (max-width: 760px) {
+  .linea-ingreso { grid-template-columns: 1fr 1fr; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .linea-ingreso > :first-child { grid-column: 1 / -1; }
+  .fila-comprobante { grid-template-columns: 1fr auto; }
+  .fila-comprobante > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+}
+
 /* Foto de prenda (Catálogo) */
 .foto-prenda { display: grid; gap: 6px; }
 .foto-fila { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }

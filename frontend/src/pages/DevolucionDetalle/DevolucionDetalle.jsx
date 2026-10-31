@@ -9,6 +9,7 @@ import { ACCION } from "../../utils/constants";
 import { fecha, fechaDe, humanizar, nombreCli, nombreEmp, observacion, prod } from "../../utils/format";
 import { PERMISOS, accionesDe, puede } from "../../utils/permisos";
 import Reembolsos from "../../components/Reembolsos";
+import ComprobantesDe from "../../components/ComprobantesDe";
 import AccionDialog from "./AccionDialog";
 
 export default function DevolucionDetalle() {
@@ -63,6 +64,7 @@ export default function DevolucionDetalle() {
       </section>
 
       {["REINTEGRADA", "CAMBIADA"].includes(d.estado) && <div className="sec"><Reembolsos filtro={{ id_devolucion: d.id_devolucion }} version={version} /></div>}
+      {["REINTEGRADA", "CAMBIADA"].includes(d.estado) && <div className="sec"><ComprobantesDe filtro={{ id_devolucion: d.id_devolucion }} version={`${d.estado}-${version}`} /></div>}
 
       <section className="card sec">
         <h2>Prendas</h2>

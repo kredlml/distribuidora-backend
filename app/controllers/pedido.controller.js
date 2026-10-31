@@ -7,6 +7,7 @@ const Producto = db.producto;
 const Pago = db.pago;
 const { registrarAuditoria } = require("../utils/auditoria");
 const { errorHttp, totalPagado, crearPedido, cancelarPedido } = require("../utils/facturacion");
+const { emitirSalidaDeVenta } = require("../utils/comprobantes");
 const { sucursalDe, whereSucursal, enAlcance, clienteEnAlcance } = require("../utils/alcance");
 const notificaciones = require("../utils/notificaciones");
 const { venceEl } = require("../utils/vencimientos");
@@ -334,6 +335,8 @@ exports.actualizarEstado = async (req, res) => {
       // Desde la entrega corre el plazo para pedir cambio o devolución.
       if (estado === 'ENTREGADO') pedido.fecha_entrega = new Date();
       await pedido.save({ transaction: t });
+      // Venta concretada a mano: su comprobante de salida (si ya existe, no se repite).
+      if (estado === 'PROCESADO') await emitirSalidaDeVenta(pedido, req.empleadoId, t);
     }
 
     await registrarAuditoria({

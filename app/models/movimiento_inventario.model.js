@@ -22,7 +22,9 @@ module.exports = (sequelize, Sequelize) => {
         // Unidades devueltas a stock al quitar un producto de un pedido PENDIENTE o al cancelarlo.
         'CANCELACION',
         // Baja manual de stock desde el panel (Sucursales > ajuste): conteo, pérdida, daño, etc.
-        'AJUSTE_SALIDA'
+        'AJUSTE_SALIDA',
+        // Ingreso de mercadería (de proveedor o directo) con su comprobante de entrada.
+        'INGRESO'
       ),
       allowNull: false
     },

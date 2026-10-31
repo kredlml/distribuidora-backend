@@ -31,6 +31,13 @@ export const SIGUIENTE_ESTADO = {
   ENVIADO: { estado: "ENTREGADO", boton: "Marcar como entregado", texto: "El cliente recibió el pedido. Desde aquí puede pedir cambios o devoluciones." },
 };
 
+// Comprobantes de mercadería (mismos códigos que el backend).
+export const TIPOS_COMPROBANTE = { ENTRADA: "Entrada", SALIDA: "Salida" };
+export const CONCEPTOS = {
+  INGRESO_PROVEEDOR: "Ingreso de proveedor", INGRESO_DIRECTO: "Ingreso directo", VENTA: "Venta",
+  BAJA: "Baja de stock", DEVOLUCION: "Devolución reintegrada", CAMBIO: "Cambio de prenda",
+};
+
 export const PUESTOS = [["DISTRITAL", "Gerente distrital"], ["ADMIN", "Administrador de sucursal"], ["CAJERO", "Cajero"], ["BODEGUERO", "Bodeguero"]];
 
 export const ACCION = {

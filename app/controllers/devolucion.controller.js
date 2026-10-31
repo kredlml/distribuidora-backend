@@ -14,6 +14,7 @@ const { crearReembolsosDeDevolucion, procesarEnStripe } = require("../utils/reem
 const notificaciones = require("../utils/notificaciones");
 const { leerPaginacion, pagina, textoBusqueda, idBuscado } = require("../utils/paginacion");
 const { esIdValido } = require("../middlewares/validarId");
+const { emitirComprobante } = require("../utils/comprobantes");
 
 // Después de confirmar: los reembolsos a tarjeta se piden a Stripe (procesarEnStripe avisa a la
 // clienta y nunca lanza) y de los de caja se avisa que están listos. Si Stripe no responde, el
@@ -129,6 +130,9 @@ async function reingresarAInventario({ id_producto, id_sucursal, cantidad, estad
   }
   return fila;
 }
+
+// Estado con que vuelve al inventario una prenda según su inspección.
+const estadoDeRevision = (r) => (r === 'BUEN_ESTADO' ? 'DISPONIBLE' : r === 'DANADO' ? 'DANADA' : 'DEFECTUOSA');
 
 // Detalles ordenados por producto (orden de bloqueo estable).
 const porProducto = (detalles) => [...(detalles || [])].sort((a, b) => a.id_producto - b.id_producto || a.id_detalle_devolucion - b.id_detalle_devolucion);
@@ -703,14 +707,12 @@ exports.reintegrar = async (req, res) => {
     const detalles = porProducto(devolucion.DetalleDevolucions);
     await bloquearInventario(detalles.map(d => d.id_producto), id_sucursal, t);
 
+    if (detalles.some(d => d.resultado_revision === 'PENDIENTE')) {
+      const d = detalles.find(x => x.resultado_revision === 'PENDIENTE');
+      throw new Error(`El detalle ${d.id_detalle_devolucion} aún no tiene resultado de revisión.`);
+    }
     for (const detalle of detalles) {
-      if (detalle.resultado_revision === 'PENDIENTE') {
-        throw new Error(`El detalle ${detalle.id_detalle_devolucion} aún no tiene resultado de revisión.`);
-      }
-
-      const estadoInventario = detalle.resultado_revision === 'BUEN_ESTADO'
-        ? 'DISPONIBLE'
-        : detalle.resultado_revision === 'DANADO' ? 'DANADA' : 'DEFECTUOSA';
+      const estadoInventario = estadoDeRevision(detalle.resultado_revision);
 
       const fila = await reingresarAInventario({
         id_producto: detalle.id_producto,
@@ -750,6 +752,14 @@ exports.reintegrar = async (req, res) => {
 
     // El dinero de las prendas devueltas: a la tarjeta en línea (Stripe) y/o pendiente en caja.
     const creados = await crearReembolsosDeDevolucion({ devolucion, pedido: devolucion.Pedido, id_empleado: req.empleadoId }, t);
+    // Comprobante de entrada: las prendas volvieron al inventario con el estado de su inspección.
+    // Va al final: el contador de comprobantes es el último bloqueo de la transacción.
+    await emitirComprobante({
+      tipo: 'ENTRADA', concepto: 'DEVOLUCION', id_sucursal, id_empleado: req.empleadoId,
+      id_pedido: devolucion.id_pedido, id_devolucion: devolucion.id_devolucion,
+      motivo: `Devolución #${devolucion.id_devolucion} del pedido #${devolucion.id_pedido}: prendas reintegradas al inventario.`,
+      lineas: detalles.map(d => ({ id_producto: d.id_producto, cantidad: d.cantidad, estado_inventario: estadoDeRevision(d.resultado_revision) }))
+    }, t);
 
     await t.commit();
     confirmado = true;
@@ -798,9 +808,7 @@ exports.cambiar = async (req, res) => {
 
     // 2) Ejecutar el cambio: sale la prenda vieja (según su condición) y entra la nueva variante.
     for (const detalle of detalles) {
-      const estadoInventarioVieja = detalle.resultado_revision === 'BUEN_ESTADO'
-        ? 'DISPONIBLE'
-        : detalle.resultado_revision === 'DANADO' ? 'DANADA' : 'DEFECTUOSA';
+      const estadoInventarioVieja = estadoDeRevision(detalle.resultado_revision);
 
       const filaVieja = await reingresarAInventario({
         id_producto: detalle.id_producto,
@@ -856,6 +864,21 @@ exports.cambiar = async (req, res) => {
 
     // Si la variante nueva cuesta menos, se devuelve la diferencia.
     const creados = await crearReembolsosDeDevolucion({ devolucion, pedido: devolucion.Pedido, id_empleado: req.empleadoId }, t);
+    // Comprobantes del cambio: entra la prenda que devuelve la clienta (con el estado de su
+    // inspección) y sale la variante nueva que se le entrega. Al final: el contador es el último bloqueo.
+    const motivoCambio = `Cambio de la devolución #${devolucion.id_devolucion} del pedido #${devolucion.id_pedido}`;
+    await emitirComprobante({
+      tipo: 'ENTRADA', concepto: 'CAMBIO', id_sucursal, id_empleado: req.empleadoId,
+      id_pedido: devolucion.id_pedido, id_devolucion: devolucion.id_devolucion,
+      motivo: `${motivoCambio}: prendas recibidas de la clienta.`,
+      lineas: detalles.map(d => ({ id_producto: d.id_producto, cantidad: d.cantidad, estado_inventario: estadoDeRevision(d.resultado_revision) }))
+    }, t);
+    await emitirComprobante({
+      tipo: 'SALIDA', concepto: 'CAMBIO', id_sucursal, id_empleado: req.empleadoId,
+      id_pedido: devolucion.id_pedido, id_devolucion: devolucion.id_devolucion,
+      motivo: `${motivoCambio}: variantes nuevas entregadas a la clienta.`,
+      lineas: detalles.map(d => ({ id_producto: d.id_producto_nuevo, cantidad: d.cantidad, estado_inventario: 'DISPONIBLE' }))
+    }, t);
 
     await t.commit();
     confirmado = true;

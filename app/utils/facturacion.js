@@ -148,6 +148,8 @@ async function procesarPedidoSiEstaPagado(id_pedido, id_empleado, t) {
 
   pedido.estado = 'PROCESADO';
   await pedido.save({ transaction: t });
+  // La venta se concretó: sale la mercadería con su comprobante de salida.
+  await require("./comprobantes").emitirSalidaDeVenta(pedido, id_empleado, t);
 
   await registrarAuditoria({
     id_empleado,

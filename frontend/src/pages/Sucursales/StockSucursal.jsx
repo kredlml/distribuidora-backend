@@ -9,6 +9,7 @@ import * as productosService from "../../services/productosService";
 import { INV_ESTADOS, INV_TONO } from "../../utils/constants";
 import { humanizar, prod } from "../../utils/format";
 import { puede } from "../../utils/permisos";
+import ComprobanteDialog from "../../components/ComprobanteDialog";
 import AjusteDialog from "./AjusteDialog";
 
 /** Stock de una sucursal por fila de inventario (lote y estado), con baja de una o varias filas. */
@@ -18,6 +19,9 @@ export default function StockSucursal({ sucursal }) {
   const [f, setF] = useState({ q: "", estado: "", agotadas: false });
   const [sel, setSel] = useState(() => new Set());
   const [ajustando, setAjustando] = useState(false);
+  // Comprobante de salida de la última baja (aviso con enlace para verlo o descargarlo).
+  const [ultimaBaja, setUltimaBaja] = useState(null);
+  const [viendo, setViendo] = useState(false);
   const { data, error, loading, reload } = useFetch(async () => {
     const [inv, prods] = await Promise.all([inventarioService.deSucursal(sucursal.id_sucursal), productosService.listar()]);
     return { inv, P: Object.fromEntries(prods.map((p) => [p.id_producto, p])) };
@@ -54,7 +58,7 @@ export default function StockSucursal({ sucursal }) {
 
   const alternar = (id, on) => setSel((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; });
   const alternarTodas = (on) => setSel((s) => { const n = new Set(s); elegibles.forEach((x) => (on ? n.add(x.id_inventario) : n.delete(x.id_inventario))); return n; });
-  const terminarAjuste = (ok) => { setAjustando(false); if (ok) setSel(new Set()); reload(); };
+  const terminarAjuste = (ok, comprobante) => { setAjustando(false); if (ok) { setSel(new Set()); setUltimaBaja(comprobante || null); } reload(); };
 
   return (
     <section className="card">
@@ -62,6 +66,13 @@ export default function StockSucursal({ sucursal }) {
         <div><h2>Stock de {sucursal.nombre}</h2><div className="muted sm">{filas.length} fila{filas.length === 1 ? "" : "s"} de inventario (cada ingreso o lote es una fila).</div></div>
         {ajusta && <button className="btn bad" disabled={!seleccionadas.length} onClick={() => setAjustando(true)}>Dar de baja o ajustar ({seleccionadas.length})</button>}
       </div>
+      {ultimaBaja && (
+        <div className="aviso-comprobante sm" role="status">
+          <span>Baja registrada con el comprobante de salida <b>{ultimaBaja.folio}</b>.</span>
+          <button type="button" className="enlace" onClick={() => setViendo(true)}>Ver o descargar en PDF</button>
+          <button type="button" className="enlace" onClick={() => setUltimaBaja(null)}>Ocultar</button>
+        </div>
+      )}
       <div className="bar">
         {estados.map((e) => <span key={e} className={`st ${INV_TONO[e] || ""}`}>{humanizar(e)}: {total(e)}</span>)}
       </div>
@@ -87,7 +98,8 @@ export default function StockSucursal({ sucursal }) {
         )) : <p className="muted">No hay stock con estos filtros.</p>}
       </div>
 
-      {ajustando && <AjusteDialog sucursal={sucursal} filas={seleccionadas} onClose={() => terminarAjuste(false)} onDone={() => terminarAjuste(true)} />}
+      {ajustando && <AjusteDialog sucursal={sucursal} filas={seleccionadas} onClose={() => terminarAjuste(false)} onDone={(c) => terminarAjuste(true, c)} />}
+      {viendo && ultimaBaja && <ComprobanteDialog id={ultimaBaja.id_comprobante} onClose={() => setViendo(false)} />}
     </section>
   );
 }

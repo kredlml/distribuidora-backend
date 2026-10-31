@@ -3,6 +3,7 @@ import AppLayout from "./components/AppLayout";
 import RoleRoute from "./components/RoleRoute";
 import Catalogo from "./pages/Catalogo/Catalogo";
 import Clientes from "./pages/Clientes/Clientes";
+import Comprobantes from "./pages/Comprobantes/Comprobantes";
 import NuevaVenta from "./pages/NuevaVenta/NuevaVenta";
 import PedidoDetalle from "./pages/PedidoDetalle/PedidoDetalle";
 import Pedidos from "./pages/Pedidos/Pedidos";
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="nueva" element={<NuevaSolicitud />} />
         <Route path="trazabilidad" element={<Trazabilidad />} />
         <Route path="inventario" element={<Inventario />} />
+        <Route path="comprobantes" element={<Comprobantes />} />
         <Route path="catalogo" element={
           <RoleRoute roles={PERMISOS.catalogo} mensaje="Esta sección es solo para ADMIN o BODEGUERO."><Catalogo /></RoleRoute>
         } />

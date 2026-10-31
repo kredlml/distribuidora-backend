@@ -28,7 +28,7 @@ export default function AjusteDialog({ sucursal, filas, onClose, onDone }) {
       ajustes: filas.map((x) => ({ id_inventario: x.id_inventario, cantidad_actual: x.cantidad, cantidad_nueva: valor(x) })),
     });
     aviso(r.message);
-    onDone();
+    onDone(r.comprobante);
   });
 
   return (
@@ -54,7 +54,7 @@ export default function AjusteDialog({ sucursal, filas, onClose, onDone }) {
         <label className="sm muted">Observación {motivo === "OTRO" ? "(obligatoria)" : "(opcional)"}
           <input className="field" name="observacion" maxLength={150} required={motivo === "OTRO"} placeholder="Ej.: conteo del 19/10, faltaban 3" />
         </label>
-        <p className="sm">Se darán de baja <b>{unidades}</b> unidad{unidades === 1 ? "" : "es"} en {filas.length} fila{filas.length === 1 ? "" : "s"}. Queda registrado en Trazabilidad con tu nombre.</p>
+        <p className="sm">Se darán de baja <b>{unidades}</b> unidad{unidades === 1 ? "" : "es"} en {filas.length} fila{filas.length === 1 ? "" : "s"}. Queda registrado en Trazabilidad con tu nombre y se genera un comprobante de salida.</p>
         <div className="err" role="alert">{error}</div>
         <div className="acts">
           <button type="button" className="btn" onClick={onClose}>Cancelar</button>

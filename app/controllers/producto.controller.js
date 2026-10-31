@@ -201,13 +201,14 @@ exports.delete = async (req, res) => {
     if (!producto) {
       return res.status(404).send({ message: `No se encontró el producto con id=${id}.` });
     }
-    const [hijos, pedidos, devs, devsNuevo, movs, inv] = await Promise.all([
+    const [hijos, pedidos, devs, devsNuevo, movs, inv, enComprobantes] = await Promise.all([
       Producto.count({ where: { id_producto_padre: id } }),
       db.detalle_pedido.count({ where: { id_producto: id } }),
       db.detalle_devolucion.count({ where: { id_producto: id } }),
       db.detalle_devolucion.count({ where: { id_producto_nuevo: id } }),
       db.movimiento_inventario.count({ where: { id_producto: id } }),
-      db.inventario.count({ where: { id_producto: id } })
+      db.inventario.count({ where: { id_producto: id } }),
+      db.detalle_comprobante.count({ where: { id_producto: id } })
     ]);
     const motivos = [];
     if (hijos) motivos.push(`tiene ${hijos} variante(s)`);
@@ -215,6 +216,7 @@ exports.delete = async (req, res) => {
     if (devs + devsNuevo) motivos.push("participa en devoluciones o cambios");
     if (movs) motivos.push(`tiene ${movs} movimiento(s) de inventario`);
     if (inv) motivos.push("tiene registros de inventario");
+    if (enComprobantes) motivos.push("aparece en comprobantes de entrada o salida");
     if (motivos.length) {
       return res.status(409).send({
         message: `No se puede eliminar la prenda #${id} porque ${motivos.join(", ")}. Desactívala desde Editar para que deje de ofrecerse sin perder el historial.`

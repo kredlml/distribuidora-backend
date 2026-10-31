@@ -67,6 +67,7 @@ require("./app/routes/tienda.routes")(app);
 require("./app/routes/imagen.routes")(app);
 require("./app/routes/reembolso.routes")(app);
 require("./app/routes/cupon.routes")(app);
+require("./app/routes/comprobante.routes")(app);
 
 // Rutas /api que no existen y errores no controlados: respuesta JSON (nunca la pila al cliente).
 app.use("/api", monitoreo.noEncontrado);
