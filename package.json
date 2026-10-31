@@ -22,7 +22,8 @@
     "migrar": "node scripts/migrar.js aplicar",
     "migrar:estado": "node scripts/migrar.js estado",
     "respaldo": "node scripts/respaldo.js",
-    "restaurar": "node scripts/restaurar.js"
+    "restaurar": "node scripts/restaurar.js",
+    "docs:pdf": "node docs/pdf/generar-pdf.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -39,6 +40,8 @@
     "umzug": "3.8.3"
   },
   "devDependencies": {
+    "marked": "18.1.1",
+    "mermaid": "11.12.0",
     "playwright-core": "1.63.0"
   }
 }

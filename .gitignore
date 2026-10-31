@@ -11,3 +11,4 @@ tests/salidas/
 # Respaldos de la base (npm run respaldo) y correos guardados en modo archivo
 respaldos/
 correos/
+docs/pdf/.documento.html
