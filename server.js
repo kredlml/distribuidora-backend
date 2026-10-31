@@ -38,7 +38,7 @@ app.use(bodyParser.urlencoded({ extended: true, inflate: false }));
 const db = require("./app/models");
 // El esquema se maneja con migraciones (app/migraciones, npm run migrar); el servidor aplica las
 // pendientes antes de escuchar (ver el final de este archivo).
-const { prepararBase } = require("./app/utils/migrador");
+const { prepararBase, vigilarEsquema } = require("./app/utils/migrador");
 
 
 app.get("/", (req, res) => {
@@ -76,6 +76,7 @@ monitoreo.vigilarProceso();
 const PORT = process.env.PORT || 8080;
 prepararBase(db)
   .then(() => {
+    vigilarEsquema(db);
     app.listen(PORT, () => {
       console.log(`Servidor corriendo en el puerto ${PORT} [Ambiente: ${process.env.NODE_ENV || "development"}].`);
     });

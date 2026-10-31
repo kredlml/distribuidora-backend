@@ -84,16 +84,72 @@ const script = (archivo, args = [], env = {}) => spawnSync(process.execPath, [pa
     await detener(srv);
     await q(`ALTER TABLE "Sucursal" DROP COLUMN nota_manual`);
 
-    console.log("\n== Modelo cambiado sin migración");
+    console.log("\n== Columnas borradas después de migrar (otra versión del backend con sync alter)");
+    // Así quedó la base real: SequelizeMeta con todas las migraciones, pero alter de una rama vieja
+    // borró las columnas nuevas de tablas que ya existían.
     await q(`ALTER TABLE "Proveedor" DROP COLUMN IF EXISTS telefono`);
+    await q(`ALTER TABLE "Pedido" DROP COLUMN costo_envio, DROP COLUMN descuento, DROP COLUMN id_cupon, DROP COLUMN cupon_tipo`);
+    let r = script("migrar.js", ["estado"]);
+    check("migrar:estado lista aplicadas, pendientes y lo que falta", r.status === 0 && /Aplicadas \(\d+\)/.test(r.stdout) && /Pendientes \(0\)/.test(r.stdout) && /Proveedor\.telefono/.test(r.stdout) && /Pedido\.costo_envio/.test(r.stdout), r.stdout + r.stderr);
+    check("migrar:estado no muestra la contraseña de la base", !/DB_PASSWORD|password=/i.test(r.stdout + r.stderr));
+    // Una tabla que falta no se recrea vacía: solo se avisa (se renombra y luego se devuelve).
+    await q(`ALTER TABLE "auditoria" RENAME TO "auditoria_aparte"`);
     srv = arrancar(PORT, "migraciones-4.log");
     await escuchando(PORT);
-    check("avisa en el log qué falta (y no toca la base por su cuenta)", /ATENCIÓN.*Proveedor\.telefono/.test(srv.log()) && !(await col("Proveedor", "telefono")), srv.log());
-    let r = script("migrar.js", ["estado"]);
-    check("migrar:estado lista aplicadas, pendientes y lo que falta", r.status === 0 && /Aplicadas \(\d+\)/.test(r.stdout) && /Pendientes \(0\)/.test(r.stdout) && /Proveedor\.telefono/.test(r.stdout), r.stdout + r.stderr);
-    check("migrar:estado no muestra la contraseña de la base", !/DB_PASSWORD|password=/i.test(r.stdout + r.stderr));
+    check("al arrancar las vuelve a agregar y avisa en el log", /ATENCIÓN.*Proveedor\.telefono.*Se agregaron/.test(srv.log()) && (await col("Proveedor", "telefono")) && (await col("Pedido", "costo_envio")) && (await col("Pedido", "id_cupon")) && (await col("Pedido", "cupon_tipo")), srv.log());
+    check("la llave foránea de Pedido.id_cupon vuelve a apuntar a Cupon", (await q(`SELECT count(*)::int n FROM information_schema.table_constraints tc JOIN information_schema.constraint_column_usage u USING (constraint_name) WHERE tc.table_name='Pedido' AND tc.constraint_type='FOREIGN KEY' AND u.table_name='Cupon'`))[0].n === 1);
+    check("una tabla que falta no se crea vacía: solo se avisa", !(await tabla("auditoria")) && /Siguen faltando: tabla auditoria/.test(srv.log()), srv.log());
+    const reg = await q(`SELECT metodo, mensaje FROM "ErrorServidor" WHERE metodo = 'ESQUEMA'`);
+    check("la reparación queda en el registro de errores (la ve el DISTRITAL)", reg.length === 1 && /Pedido\.costo_envio/.test(reg[0].mensaje) && /sync\(\{ alter: true \}\)/.test(reg[0].mensaje), reg);
     await detener(srv);
-    await q(`ALTER TABLE "Proveedor" ADD COLUMN telefono varchar(20)`);
+    await q(`ALTER TABLE "auditoria_aparte" RENAME TO "auditoria"`);
+
+    console.log("\n== Columnas borradas con el servidor corriendo");
+    srv = arrancar(PORT, "migraciones-4b.log");
+    await escuchando(PORT);
+    const jwt = require(B + "/node_modules/jsonwebtoken");
+    const [ana] = await q(`SELECT id_cliente, token_version FROM "Cliente" WHERE nombre = 'Ana'`);
+    // Sesión de Ana emitida antes del borrado (v = su versión de entonces).
+    const tokAna = jwt.sign({ id_cliente: ana.id_cliente, tipo: "CLIENTE", v: ana.token_version }, ENV.JWT_SECRET, { expiresIn: 3600 });
+    const perfil = () => fetch(`http://localhost:${PORT}/api/tienda/perfil`, { headers: { "x-access-token": tokAna, Authorization: `Bearer ${tokAna}` } });
+    check("antes del borrado la sesión de Ana vale", (await perfil()).status === 200);
+    await q(`ALTER TABLE "Cliente" DROP COLUMN token_version`);
+    const login = () => fetch(`http://localhost:${PORT}/api/tienda/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "nadie@x.com", password: "x" }) });
+    const primera = await login();
+    check("la petición que encuentra la columna borrada responde error", primera.status === 500, primera.status);
+    let reparada = false;
+    for (let i = 0; i < 20 && !reparada; i++) { await sleep(250); reparada = await col("Cliente", "token_version"); }
+    await sleep(300);
+    check("el servidor la vuelve a agregar solo, sin reiniciar", reparada && /ATENCIÓN.*Cliente\.token_version/.test(srv.log()), srv.log());
+    const segunda = await login();
+    check("las peticiones siguientes ya funcionan", segunda.status === 401 || segunda.status === 400, segunda.status);
+    const [anaDespues] = await q(`SELECT nombre, token_version FROM "Cliente" WHERE id_cliente = $1`, [ana.id_cliente]);
+    check("los clientes conservan sus datos y token_version vuelve con una versión nueva (no 0)", anaDespues.nombre === "Ana" && anaDespues.token_version > 1700000000, anaDespues);
+    check("…así ninguna sesión emitida antes revive: la de Ana ya no vale (401)", (await perfil()).status === 401);
+    await detener(srv);
+
+    console.log("\n== Reparación mientras una transacción larga tiene tomada la tabla");
+    srv = arrancar(PORT, "migraciones-4c.log");
+    await escuchando(PORT);
+    await q(`ALTER TABLE "Cliente" DROP COLUMN token_version`);
+    const larga = new Client({ host: "localhost", port: 54329, user: "tester", database: "distrib_test" });
+    await larga.connect();
+    await larga.query(`BEGIN; SELECT count(*) FROM "Cliente";`); // queda con la tabla tomada (ACCESS SHARE)
+    check("con la columna borrada la petición falla", (await login()).status === 500);
+    await sleep(500); // la reparación ya pidió el ALTER y espera el bloqueo
+    const t0 = Date.now();
+    const durante = await login();
+    const espera = Date.now() - t0;
+    check("las consultas a la tabla no quedan colgadas: el ALTER se rinde en ~5 s (lock_timeout)", durante.status === 500 && espera < 9000, { status: durante.status, espera });
+    let rendida = false;
+    for (let i = 0; i < 40 && !rendida; i++) { await sleep(250); rendida = /lock timeout/.test(srv.log()); }
+    check("…y lo deja en el log como error de la reparación, sin columna a medias", rendida && !(await col("Cliente", "token_version")), srv.log());
+    await larga.query("COMMIT"); await larga.end();
+    await detener(srv);
+    srv = arrancar(PORT, "migraciones-4d.log");
+    await escuchando(PORT);
+    check("liberada la tabla, el siguiente arranque la repara", await col("Cliente", "token_version"), srv.log());
+    await detener(srv);
     // Deshacer revierte solo la última; la línea base nunca se deshace.
     const ultima = migraciones[migraciones.length - 1];
     r = script("migrar.js", ["deshacer"]);

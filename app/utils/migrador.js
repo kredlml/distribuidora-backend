@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Umzug, SequelizeStorage } = require("umzug");
-const { diferencias } = require("./esquema");
+const { diferencias, asegurarModelo, modelosOrdenados } = require("./esquema");
 const { mantenimiento } = require("./mantenimiento");
 
 const CARPETA = path.join(__dirname, "..", "migraciones");
@@ -59,18 +59,90 @@ async function conCandado(db, fn, { clave = CANDADO, intentar = false, esperaSeg
   }
 }
 
-// Aplica las migraciones pendientes y el mantenimiento de datos (todo bajo el candado: dos
-// arranques simultáneos no promueven a dos DISTRITAL). La usa server.js antes de escuchar
-// peticiones: si una migración falla, el servidor no arranca a medias.
+// Vuelve a agregar las columnas (y valores de ENUM) que los modelos tienen y la base no; nunca
+// borra ni crea tablas (una tabla que falta solo se avisa: crearla vacía escondería el problema).
+// Hace falta porque las versiones viejas del backend (ramas anteriores a las migraciones) arrancan
+// con sync({ alter: true }): si alguien corre una contra la misma base, alter BORRA las columnas que
+// su modelo no conoce, aunque SequelizeMeta diga que la migración ya corrió. Los datos de esas
+// columnas se pierden; vuelven con su valor por defecto y queda registrado en ErrorServidor (lo ve
+// el DISTRITAL en el panel) para que un borrado que se repite no pase inadvertido.
+// Cada tabla se repara en su propia transacción con lock_timeout: si una transacción larga tiene
+// tomada la tabla, el ALTER se rinde en segundos en vez de dejar en cola todas sus consultas.
+const ESPERA_BLOQUEO = "5s";
+async function repararEsquema(db) {
+  const sequelize = db.sequelize;
+  const faltaban = await diferencias(sequelize);
+  const resultado = { faltaban, agregadas: [], errores: [] };
+  if (!faltaban.length) return resultado;
+  for (const modelo of modelosOrdenados(sequelize)) {
+    if (modelo.name === "SequelizeMeta") continue;
+    try {
+      const agregadas = await sequelize.transaction(async (transaction) => {
+        await sequelize.query(`SET LOCAL lock_timeout = '${ESPERA_BLOQUEO}'`, { transaction });
+        const hecho = await asegurarModelo(sequelize, modelo, { crearTabla: false, transaction });
+        // token_version vuelve en 0, y 0 puede ser la versión de una sesión que ya se había cerrado
+        // (cambio de contraseña): se le pone una que ningún token emitido tiene (segundos desde 1970,
+        // siempre mayor que la anterior). Cierra todas las sesiones de esa tabla; nadie revive.
+        const tabla = modelo.getTableName();
+        if (hecho.includes(`${tabla}.token_version`)) {
+          await sequelize.query(`UPDATE "${tabla}" SET token_version = floor(extract(epoch FROM now()))::int`, { transaction });
+        }
+        return hecho;
+      });
+      resultado.agregadas.push(...agregadas);
+    } catch (error) {
+      resultado.errores.push(`${modelo.name}: ${error.message}`); // sigue con los demás modelos
+    }
+  }
+  const siguen = await diferencias(sequelize).catch(() => faltaban);
+  const mensaje = `Faltaban en la base: ${faltaban.join(", ")}. Se agregaron (vacías, con su valor por defecto): ${resultado.agregadas.join(", ") || "ninguna"}.`
+    + (siguen.length ? ` Siguen faltando: ${siguen.join(", ")}.` : "")
+    + (resultado.errores.length ? ` Errores: ${resultado.errores.join(" | ")}.` : "")
+    + " Causa probable: otra versión del backend con sync({ alter: true }) contra esta base; si no, falta una migración en app/migraciones.";
+  console.warn(`[migración] ATENCIÓN: ${mensaje}`);
+  await require("./monitoreo").registrarError({ metodo: "ESQUEMA", ruta: "reparación del esquema", estado: 500, mensaje });
+  return resultado;
+}
+
+// Aplica las migraciones pendientes, repara lo que falte y corre el mantenimiento de datos (todo
+// bajo el candado: dos arranques simultáneos no promueven a dos DISTRITAL). La usa server.js antes
+// de escuchar peticiones: si una migración falla, el servidor no arranca a medias.
 async function prepararBase(db) {
   await conCandado(db, async () => {
     const aplicadas = await crearMigrador(db).up();
     if (!aplicadas.length) console.log("[migración] la base está al día.");
+    await repararEsquema(db).catch((e) => console.error(`[migración] No se pudo reparar el esquema: ${e.message}`));
     await mantenimiento(db);
   });
-  // Si alguien cambió un modelo y olvidó escribir la migración, se avisa (no se toca la base).
-  const faltan = await diferencias(db.sequelize).catch(() => []);
-  if (faltan.length) console.warn(`[migración] ATENCIÓN: los modelos tienen columnas que la base no: ${faltan.join(", ")}. Escribe una migración nueva en app/migraciones.`);
 }
 
-module.exports = { crearMigrador, conCandado, prepararBase };
+// Con el servidor ya corriendo: si Postgres responde "no existe la columna" (42703), alguien la
+// borró mientras tanto (ver repararEsquema). Se repara en segundo plano, a lo sumo una vez por
+// `esperaMs`; la petición que falló responde su error y las siguientes ya funcionan. Una tabla que
+// falta (42P01) no dispara nada: alter no borra tablas.
+const COLUMNA_INEXISTENTE = "42703";
+function vigilarEsquema(db, { esperaMs = 60000 } = {}) {
+  const sequelize = db.sequelize;
+  const consultar = sequelize.query.bind(sequelize);
+  let enCurso = null;
+  let ultima = 0;
+  const reparar = (error) => {
+    if (enCurso || Date.now() - ultima < esperaMs) return;
+    ultima = Date.now();
+    console.warn(`[migración] Postgres dice que falta una columna (${error.message}); revisando el esquema.`);
+    enCurso = conCandado(db, () => repararEsquema(db), { intentar: true })
+      .then((r) => {
+        if (r === null) console.warn("[migración] Otro servidor está migrando o reparando la base; no se repara aquí.");
+        else if (!r.faltaban.length) console.warn("[migración] No falta ninguna columna de los modelos: el error viene de una consulta SQL escrita a mano o de una tabla sin modelo.");
+      })
+      .catch((e) => console.error(`[migración] No se pudo reparar el esquema: ${e.message}`))
+      .finally(() => { enCurso = null; });
+  };
+  sequelize.query = (...args) => consultar(...args).catch((error) => {
+    const codigo = error && ((error.original && error.original.code) || (error.parent && error.parent.code));
+    if (codigo === COLUMNA_INEXISTENTE) reparar(error);
+    throw error;
+  });
+}
+
+module.exports = { crearMigrador, conCandado, prepararBase, repararEsquema, vigilarEsquema };
