@@ -22,7 +22,9 @@
     "migrar": "node scripts/migrar.js aplicar",
     "migrar:estado": "node scripts/migrar.js estado",
     "respaldo": "node scripts/respaldo.js",
-    "restaurar": "node scripts/restaurar.js"
+    "restaurar": "node scripts/restaurar.js",
+    "demo:preparar": "node scripts/preparar-demo.js",
+    "demo:despertar": "node scripts/preparar-demo.js --despertar --api https://distribuidora-api-r6rw.onrender.com"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

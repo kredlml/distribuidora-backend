@@ -1,0 +1,414 @@
+<title>Guion de la demo Distribuidora</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Concepto: guion de trabajo para imprimir o tener abierto al lado; una columna de lectura, el
+   minuto a minuto en dos carriles (lo que se hace / lo que se dice) y casillas de preparación. */
+:root {
+  --papel: #f4f4f9;
+  --hoja: #ffffff;
+  --tinta: #17142b;
+  --tinta-suave: #5c5873;
+  --violeta: #5433eb;
+  --violeta-suave: #ece8ff;
+  --linea: #dedbeb;
+  --aviso: #8a5a00;
+  --aviso-fondo: #fff4dc;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --texto: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papel: #121019; --hoja: #1b1826; --tinta: #efedf7; --tinta-suave: #a9a5bf; --violeta: #8f7bff;
+    --violeta-suave: #2a2347; --linea: #322d46; --aviso: #ffcf73; --aviso-fondo: #3a2c10; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --papel: #121019; --hoja: #1b1826; --tinta: #efedf7; --tinta-suave: #a9a5bf; --violeta: #8f7bff;
+  --violeta-suave: #2a2347; --linea: #322d46; --aviso: #ffcf73; --aviso-fondo: #3a2c10; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--papel); color: var(--tinta); font: 16.5px/1.6 var(--texto);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.pagina { max-width: 980px; margin: 0 auto; padding-block: 40px 80px; display: grid; gap: 44px; }
+header { display: grid; gap: 12px; }
+.eyebrow { font: 600 13px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--violeta); }
+h1 { font: 800 46px/1.05 var(--display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 800 28px/1.15 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 19px/1.3 var(--texto); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.suave { color: var(--tinta-suave); }
+section { display: grid; gap: 16px; }
+code, .mono { font-family: var(--mono); font-size: .9em; }
+code { background: var(--violeta-suave); padding: 1px 6px; border-radius: 4px; }
+
+.resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.dato { background: var(--hoja); border: 1px solid var(--linea); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; }
+.dato b { font: 800 26px var(--display); font-variant-numeric: tabular-nums; }
+.dato span { color: var(--tinta-suave); font-size: 14.5px; }
+
+.tabla-envoltura { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; background: var(--hoja); border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--linea); vertical-align: top; }
+th { font: 600 12.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--tinta-suave); background: var(--papel); }
+tr:last-child td { border-bottom: none; }
+td.mono { white-space: nowrap; }
+
+.checklist { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grupo { background: var(--hoja); border: 1px solid var(--linea); border-radius: 12px; padding: 16px 18px; display: grid; gap: 10px; align-content: start; }
+.grupo h3 { font: 600 13px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--violeta); }
+.grupo label { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: 15.5px; line-height: 1.45; cursor: pointer; }
+.grupo input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--violeta); }
+.grupo input:checked + span { color: var(--tinta-suave); text-decoration: line-through; }
+input:focus-visible { outline: 3px solid var(--violeta); outline-offset: 2px; }
+
+/* Minuto a minuto */
+.paso { background: var(--hoja); border: 1px solid var(--linea); border-radius: 14px; overflow: hidden; }
+.paso-cab { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--linea); }
+.paso-cab .t { font: 600 14px var(--mono); color: var(--violeta); font-variant-numeric: tabular-nums; min-width: 92px; }
+.paso-cab h3 { flex: 1; min-width: 220px; }
+.paso-cab .quien { font: 600 13px var(--mono); padding: 3px 10px; border-radius: 999px; background: var(--violeta-suave); color: var(--violeta); }
+.carriles { display: grid; grid-template-columns: 1fr 1.25fr; }
+.carril { padding: 14px 18px; display: grid; gap: 8px; align-content: start; }
+.carril + .carril { border-left: 1px solid var(--linea); }
+.carril .rot { font: 600 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--tinta-suave); }
+.carril ol, .carril ul { margin: 0; padding-left: 20px; display: grid; gap: 5px; font-size: 15.5px; }
+.decir { font-size: 16px; line-height: 1.55; display: grid; gap: 8px; }
+.decir p::before { content: "«"; color: var(--violeta); }
+.decir p::after { content: "»"; color: var(--violeta); }
+.boton { font-weight: 600; white-space: nowrap; }
+.boton::before { content: "["; color: var(--tinta-suave); font-weight: 400; }
+.boton::after { content: "]"; color: var(--tinta-suave); font-weight: 400; }
+.nota { background: var(--aviso-fondo); color: var(--aviso); border-radius: 10px; padding: 10px 14px; font-size: 14.5px; }
+
+/* Preguntas */
+details { background: var(--hoja); border: 1px solid var(--linea); border-radius: 12px; padding: 0; }
+summary { cursor: pointer; padding: 14px 18px; font-weight: 600; font-size: 16.5px; list-style: none; display: flex; gap: 12px; align-items: baseline; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "+"; font: 600 18px var(--mono); color: var(--violeta); width: 14px; }
+details[open] summary::before { content: "−"; }
+summary:focus-visible { outline: 3px solid var(--violeta); outline-offset: -3px; border-radius: 12px; }
+.respuesta { padding: 0 18px 16px 44px; display: grid; gap: 8px; font-size: 15.5px; }
+.respuesta .corta { font-size: 16.5px; }
+.respuesta .mas { color: var(--tinta-suave); }
+.respuesta .mas b { color: var(--tinta); }
+
+.cuentas { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+
+@media (max-width: 700px) {
+  h1 { font-size: 34px; }
+  .carriles { grid-template-columns: 1fr; }
+  .carril + .carril { border-left: none; border-top: 1px solid var(--linea); }
+}
+@media print {
+  body { background: #fff; font-size: 12.5px; }
+  .pagina { padding-block: 0; gap: 24px; }
+  details { break-inside: avoid; }
+  details .respuesta { display: grid; }
+  .paso { break-inside: avoid; }
+}
+</style>
+
+<div class="pagina">
+  <header>
+    <div class="eyebrow">Sistema Distribuidora · Desarrollo Web · UMG</div>
+    <h1>Guion de la demostración</h1>
+    <p class="suave">Qué hacer y qué decir en cada momento, cómo preparar todo antes de presentar y respuestas cortas para las preguntas más probables. Pensado para unos 18 minutos de presentación más preguntas; ajusten los tiempos si les dan otro.</p>
+  </header>
+
+  <section>
+    <div class="resumen">
+      <div class="dato"><b>~18 min</b><span>presentación y demo, más preguntas</span></div>
+      <div class="dato"><b>9 min</b><span>de demostración en vivo</span></div>
+      <div class="dato"><b>3</b><span>integrantes: cada quien presenta su parte</span></div>
+      <div class="dato"><b>13 + 3</b><span>diapositivas, más 3 de respaldo</span></div>
+    </div>
+    <div class="tabla-envoltura">
+      <table>
+        <tr><th>Integrante</th><th>Partes</th><th>Tiempo</th></tr>
+        <tr><td>Oswaldo</td><td>Portada, conduce la demo en vivo, cierre y preguntas</td><td class="mono">~11 min</td></tr>
+        <tr><td>Kimberly</td><td>El problema, la solución, roles, calidad y operación</td><td class="mono">~4 min</td></tr>
+        <tr><td>Carlos</td><td>Arquitectura, reglas de negocio, dinero e inventario, seguridad</td><td class="mono">~3.5 min</td></tr>
+      </table>
+    </div>
+    <p class="suave">Es una propuesta de reparto: si otra persona domina mejor alguna parte, intercámbienla, pero que quien hable sea quien mejor la pueda responder.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Antes de presentar</div>
+    <h2>Preparación</h2>
+    <div class="checklist">
+      <div class="grupo">
+        <h3>Un día antes</h3>
+        <label><input type="checkbox" id="p1"><span>Respaldo de la base: <code>npm run respaldo</code></span></label>
+        <label><input type="checkbox" id="p2"><span>Datos de demostración: <code>npm run demo:preparar -- --api https://distribuidora-api-r6rw.onrender.com</code> con la cuenta DISTRITAL</span></label>
+        <label><input type="checkbox" id="p3"><span>Ensayar la demo completa dos veces, cronometrando</span></label>
+        <label><input type="checkbox" id="p4"><span>Revisar que las prendas de la demo tengan foto en el catálogo</span></label>
+        <label><input type="checkbox" id="p5"><span>Descargar el PDF de la documentación por si lo piden</span></label>
+      </div>
+      <div class="grupo">
+        <h3>La mañana de la presentación</h3>
+        <label><input type="checkbox" id="p6"><span>Volver a correr <code>npm run demo:preparar</code>: repone stock y crea un pedido entregado nuevo dentro del plazo de 24 h (plan B de la devolución)</span></label>
+        <label><input type="checkbox" id="p7"><span>Comprobar el internet del salón o llevar datos móviles</span></label>
+        <label><input type="checkbox" id="p8"><span>Cargador de la laptop y adaptador HDMI</span></label>
+      </div>
+      <div class="grupo">
+        <h3>10 minutos antes</h3>
+        <label><input type="checkbox" id="p9"><span>Despertar los servicios: <code>npm run demo:despertar</code> (la API gratis tarda ~50 s en la primera visita)</span></label>
+        <label><input type="checkbox" id="p10"><span>Abrir las tres ventanas de la tabla de abajo, con sesión iniciada</span></label>
+        <label><input type="checkbox" id="p11"><span>Vaciar el carrito de la clienta demo</span></label>
+        <label><input type="checkbox" id="p12"><span>Zoom del navegador al 125 % para que se lea en el proyector</span></label>
+        <label><input type="checkbox" id="p13"><span>Silenciar notificaciones y cerrar pestañas personales</span></label>
+      </div>
+    </div>
+
+    <h3>Ventanas abiertas</h3>
+    <p class="suave">El panel guarda una sesión por navegador: para tener dos personas del panel al mismo tiempo, usen una ventana normal y otra de incógnito.</p>
+    <div class="tabla-envoltura">
+      <table>
+        <tr><th>Ventana</th><th>Pestaña</th><th>Sesión</th></tr>
+        <tr><td>Chrome normal</td><td>1 · Diapositivas</td><td>—</td></tr>
+        <tr><td>Chrome normal</td><td>2 · Tienda <span class="mono">distribuidora-tienda.onrender.com</span></td><td>Valeria, la clienta demo</td></tr>
+        <tr><td>Chrome normal</td><td>3 · Panel <span class="mono">distribuidora-panel.onrender.com</span></td><td>Tu cuenta DISTRITAL</td></tr>
+        <tr><td>Chrome incógnito</td><td>4 · Panel</td><td>Bruno, el bodeguero demo (sucursal principal)</td></tr>
+      </table>
+    </div>
+
+    <h3>Cuentas de la demo</h3>
+    <p class="suave">Las crea el script de datos. Contraseña de todas: <code>Demo2026!</code> (o la que hayan puesto en <code>DEMO_CLAVE</code>).</p>
+    <div class="tabla-envoltura">
+      <table>
+        <tr><th>Quién</th><th>Correo</th><th>Para qué</th></tr>
+        <tr><td>Valeria · clienta</td><td class="mono">clienta@demo.distribuidora.gt</td><td>Comprar en la tienda y pedir la devolución</td></tr>
+        <tr><td>Bruno · bodeguero</td><td class="mono">bodega@demo.distribuidora.gt</td><td>Despachar, entregar, recibir e inspeccionar</td></tr>
+        <tr><td>Camila · cajera</td><td class="mono">caja@demo.distribuidora.gt</td><td>Respaldo: venta de mostrador si sobra tiempo</td></tr>
+        <tr><td>Andrea · admin</td><td class="mono">admin@demo.distribuidora.gt</td><td>Respaldo: mostrar el alcance por sucursal</td></tr>
+        <tr><td>Tarjeta de prueba</td><td class="mono">4242 4242 4242 4242</td><td>Cualquier fecha futura y cualquier CVC</td></tr>
+        <tr><td>Cupones</td><td class="mono">DEMO10 · BIENVENIDA50</td><td>10 % sin mínimo · Q50 desde Q300</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Durante la presentación</div>
+    <h2>Minuto a minuto</h2>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">0:00–0:45</span><h3>Diapositiva 1 · Portada</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago</span><ul><li>Diapositivas en pantalla completa (tecla <span class="boton">F</span>).</li><li>Presento al equipo.</li></ul></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>Buenos días. Somos Oswaldo, Carlos y Kimberly. Les presentamos Sistema Distribuidora: una tienda en línea y un panel de gestión para una distribuidora de ropa para dama con tres sucursales.</p><p>Primero les contamos el problema, luego lo verán funcionando en vivo y al final cómo está construido por dentro.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">0:45–3:00</span><h3>Diapositivas 2 a 4 · Problema, solución y roles</h3><span class="quien">Kimberly</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago</span><ul><li>Diapositiva 2: el problema.</li><li>Diapositiva 3: las tres piezas.</li><li>Diapositiva 4: los cinco roles.</li></ul></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>La distribuidora vende en el mostrador de cada sucursal y también en línea, sobre el mismo inventario. Sin un sistema común, la misma blusa se puede vender dos veces, y cuando una clienta devuelve una prenda nadie sabe si volvió a la venta o si se le devolvió el dinero.</p><p>Nuestra solución tiene tres piezas: la tienda para las clientas, el panel para los empleados y una API que concentra todas las reglas.</p><p>Cada persona ve solo lo que le toca: el cajero y el bodeguero, su sucursal; el administrador, su sucursal completa; y el gerente distrital, todas. Ahora Oswaldo se los muestra en vivo.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">3:00–3:20</span><h3>Diapositiva 5 · Un día en la tienda</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago</span><ul><li>Leo los cinco pasos en una frase.</li><li>Cambio a la pestaña 2 (tienda).</li></ul></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>Vamos a seguir una compra completa: Valeria compra en línea, la sucursal se la entrega, ella devuelve una prenda y vemos cómo el sistema le regresa su dinero y cómo la gerencia ve todo el día.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">3:20–5:30</span><h3>Demo 1 · La clienta compra en línea</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago · pestaña 2</span><ol>
+          <li>Catálogo: muestro el filtro por tipo de prenda y el selector de sucursal.</li>
+          <li>Abro una blusa: elijo talla y color; señalo el stock por sucursal.</li>
+          <li><span class="boton">Agregar al carrito</span> con 2 unidades → carrito → <span class="boton">Continuar con la compra</span>.</li>
+          <li>Checkout: dejo «Enviar desde» en la sucursal principal.</li>
+          <li>Cambio entre «Envío a domicilio» y «Retiro en la sucursal» para que vean el envío.</li>
+          <li>Escribo <code>DEMO10</code> → <span class="boton">Aplicar</span>.</li>
+          <li><span class="boton">Confirmar pedido</span> → tarjeta <code>4242 4242 4242 4242</code> → <span class="boton">Pagar</span>.</li>
+          <li>Espero el estado «Pagado».</li>
+        </ol></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>Valeria entra a la tienda. Cada prenda tiene sus tallas y colores, y el sistema le dice en qué sucursal hay existencias.</p><p>En el checkout elige cómo recibirla: a domicilio paga Q25 de envío, que es gratis desde Q300; si la recoge en la sucursal no paga envío.</p><p>Aplica el cupón DEMO10. Fíjense que el total lo calcula el servidor: prendas menos descuento más envío, con el IVA del 12 % desglosado.</p><p>Paga con tarjeta mediante Stripe. Los datos de la tarjeta nunca pasan por nuestro servidor. Pagado: el pedido pasa a preparación.</p></div>
+      </div>
+      <p class="nota" style="margin: 0 18px 16px">Si el pago tarda, sigan con el siguiente paso y vuelvan; si falla, usen la diapositiva de respaldo 14 (checkout con cupón).</p>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">5:30–6:45</span><h3>Demo 2 · La sucursal la despacha y entrega</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago · pestaña 4 (bodeguero)</span><ol>
+          <li><span class="boton">Pedidos</span> → el pedido de Valeria (origen Tienda, Pagado).</li>
+          <li>Señalo el desglose: subtotal, descuento del cupón, envío, IVA.</li>
+          <li><span class="boton">Marcar como enviado</span> → <span class="boton">Marcar como entregado</span>.</li>
+        </ol></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>Ahora soy Bruno, bodeguero de esta sucursal. Él solo ve los pedidos de su sucursal. Aquí está el de Valeria, ya pagado, con su descuento y su envío.</p><p>Lo despacha y luego registra la entrega. Desde este momento empiezan a correr las 24 horas en que Valeria puede pedir un cambio o una devolución.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">6:45–8:00</span><h3>Demo 3 · La clienta pide una devolución</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago · pestaña 2 (tienda)</span><ol>
+          <li><span class="boton">Mis pedidos</span> → el pedido entregado.</li>
+          <li>Señalo el aviso del plazo de 24 h.</li>
+          <li><span class="boton">Solicitar cambio o devolución</span> → marco 1 de las 2 blusas → tipo Devolución → motivo → comentario.</li>
+          <li><span class="boton">Enviar solicitud</span>.</li>
+        </ol></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>A Valeria no le quedó una de las blusas. Desde Mis pedidos ve que tiene 24 horas para pedir un cambio o una devolución, y solo puede hacerlo una vez por pedido.</p><p>Elige qué prenda devuelve y por qué. Si pidiera un cambio, solo podría elegir una variante del mismo precio o más barata.</p></div>
+      </div>
+      <p class="nota" style="margin: 0 18px 16px">Plan B: si el pedido nuevo no llegó a entregado, usen el pedido entregado que dejó listo el script de datos en «Mis pedidos».</p>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">8:00–10:30</span><h3>Demo 4 · Bodega revisa y el dinero vuelve solo</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago · pestañas 3 y 4</span><ol>
+          <li>Pestaña 3 (DISTRITAL): <span class="boton">Devoluciones</span> → la solicitud → <span class="boton">Aprobar</span>.</li>
+          <li>Pestaña 4 (bodeguero): la misma solicitud → <span class="boton">Marcar como recibida</span>.</li>
+          <li><span class="boton">Registrar inspección</span> → «Buen estado» → aceptar.</li>
+          <li><span class="boton">Reintegrar a inventario</span>.</li>
+          <li>Señalo la tarjeta «Reembolso»: a la tarjeta, Devuelto.</li>
+          <li><span class="boton">Trazabilidad</span> del pedido: venta, devolución, inspección y reingreso.</li>
+        </ol></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>La gerencia aprueba la solicitud. Cuando la prenda llega a la sucursal, el bodeguero la recibe y la inspecciona: si está en buen estado vuelve a la venta; si está dañada queda separada y no se puede vender.</p><p>Al reintegrarla, el sistema calcula cuánto pagó Valeria por esa prenda, con su descuento proporcional y sin el envío, y se lo devuelve automáticamente a su tarjeta. Si hubiera pagado en efectivo, el reembolso quedaría pendiente en caja.</p><p>Y en Trazabilidad vemos la vida completa de la prenda: la venta, la devolución, la inspección y el reingreso al inventario, con quién hizo cada paso.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">10:30–12:00</span><h3>Demo 5 · La gerencia ve el día</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago · pestaña 3 (DISTRITAL)</span><ol>
+          <li><span class="boton">Reportes de ventas</span> → filtro «Hoy».</li>
+          <li>Recorro: ventas por sucursal, prendas más vendidas, IVA, descuentos, reembolsado.</li>
+          <li><span class="boton">Descargar PDF</span> y lo abro un segundo.</li>
+          <li><span class="boton">Estado del sistema</span>.</li>
+          <li>Vuelvo a la pestaña 1 (diapositivas).</li>
+        </ol></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>El gerente distrital ve las ventas de todas las sucursales: cuánto vendió cada una, qué prendas salen más, cuánto se descontó con cupones, el IVA incluido y lo reembolsado. Un administrador de sucursal vería esta misma pantalla, pero solo con su sucursal.</p><p>Todo esto se descarga en PDF para la reunión del día. Y en Estado del sistema confirma que la base responde y si el servidor registró algún error. Ahora Carlos les explica cómo está construido.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">12:00–15:30</span><h3>Diapositivas 6 a 9 · Arquitectura, reglas, dinero y seguridad</h3><span class="quien">Carlos</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago</span><ul><li>6: arquitectura (≈50 s).</li><li>7: estados (≈50 s).</li><li>8: dinero e inventario (≈60 s).</li><li>9: seguridad (≈50 s).</li></ul></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>Son dos aplicaciones React, la tienda y el panel, que hablan con una API en Node.js con Express y Sequelize sobre PostgreSQL en la nube. Los pagos van por Stripe y las fotos por Cloudinary. Todo está publicado en Render.</p><p>Cada pedido y cada devolución siguen estados definidos; el sistema no deja saltarse pasos ni repetir una devolución.</p><p>Lo más delicado es el dinero y el inventario: cada venta bloquea la prenda en la base hasta confirmar, así que dos cajeros no pueden vender la última unidad. Los reembolsos llevan una clave para que reintentarlos nunca devuelva dos veces.</p><p>En seguridad, las contraseñas se guardan cifradas, las sesiones se cierran al cambiar la contraseña, y cada consulta se filtra por la sucursal del empleado en el servidor, no en la pantalla.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">15:30–17:00</span><h3>Diapositivas 10 y 11 · Calidad y operación</h3><span class="quien">Kimberly</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago</span><ul><li>10: la cifra de pruebas.</li><li>11: operación.</li></ul></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>Para confiar en todo esto escribimos pruebas automáticas: más de mil doscientas verificaciones que corren con un solo comando, incluidas pruebas que abren Chrome y usan las pantallas como lo haría una persona.</p><p>Y para que funcione fuera del aula: la base se actualiza con migraciones controladas, hay respaldos con un comando, monitoreo de errores y la documentación técnica completa está en el repositorio.</p></div>
+      </div>
+    </article>
+
+    <article class="paso">
+      <div class="paso-cab"><span class="t">17:00–18:00</span><h3>Diapositivas 12 y 13 · Lo que aprendimos y cierre</h3><span class="quien">Oswaldo</span></div>
+      <div class="carriles">
+        <div class="carril"><span class="rot">Hago</span><ul><li>12: aprendizajes.</li><li>13: gracias y URLs; dejo esta diapositiva durante las preguntas.</li></ul></div>
+        <div class="carril decir"><span class="rot">Digo</span><p>Lo que más aprendimos fue a pensar en lo que puede fallar: dos ventas al mismo tiempo, un pago que no se confirma, una prenda dañada. Esos casos definieron el diseño.</p><p>El sistema está publicado y pueden probarlo ahora mismo en estas direcciones. Muchas gracias; con gusto respondemos sus preguntas.</p></div>
+      </div>
+    </article>
+  </section>
+
+  <section>
+    <div class="eyebrow">Si algo falla</div>
+    <h2>Plan B</h2>
+    <div class="tabla-envoltura">
+      <table>
+        <tr><th>Qué pasa</th><th>Qué hacer</th><th>Qué decir</th></tr>
+        <tr><td>La página tarda en cargar</td><td>Esperar 30–60 s; la API gratuita estaba dormida. Siguiente vez, correr <code>npm run demo:despertar</code> antes.</td><td>«Usamos el plan gratuito del hosting; el servidor se activa con la primera visita.»</td></tr>
+        <tr><td>Se cae el internet</td><td>Pasar a las diapositivas de respaldo 14–16 (capturas reales).</td><td>«Les muestro las pantallas del mismo flujo.»</td></tr>
+        <tr><td>El pago con tarjeta no avanza</td><td>Recargar la página del pedido; si sigue, continuar con el pedido entregado que preparó el script.</td><td>«El pedido queda reservado; la clienta puede reintentar el pago.»</td></tr>
+        <tr><td>No aparece el botón de devolución</td><td>Usar el pedido entregado del script de datos (está dentro de las 24 h).</td><td>«Este pedido ya fue entregado hace un rato; sigamos con él.»</td></tr>
+        <tr><td>«Sesión expirada» en el panel</td><td>Volver a iniciar sesión; tener las contraseñas a mano.</td><td>—</td></tr>
+        <tr><td>Un mensaje de error en pantalla</td><td>Leerlo en voz alta; la mayoría explican la regla (por ejemplo, «stock insuficiente»).</td><td>«Esto es justamente una regla del sistema protegiendo el inventario.»</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Preguntas</div>
+    <h2>Respuestas cortas</h2>
+    <p class="suave">Respondan primero con la frase corta. Den el detalle solo si insisten.</p>
+
+    <details open>
+      <summary>¿Qué pasa si dos cajeros venden la última prenda a la vez?</summary>
+      <div class="respuesta">
+        <p class="corta">Solo una venta se completa. La otra recibe «stock insuficiente» y no se descuenta nada.</p>
+        <p class="mas"><b>Si insisten:</b> cada venta corre dentro de una transacción que bloquea la fila de inventario de esa prenda (<code>SELECT … FOR UPDATE</code>). La segunda venta espera a que la primera termine y entonces ve que ya no hay stock. Todas las ventas bloquean las prendas en el mismo orden, así que no se traban entre sí. Lo comprobamos con pruebas que lanzan ventas simultáneas.</p>
+      </div>
+    </details>
+    <details open>
+      <summary>¿Cómo evitan que una sucursal vea los datos de otra?</summary>
+      <div class="respuesta">
+        <p class="corta">El filtro está en el servidor, no en la pantalla: cada consulta se limita a la sucursal del empleado. Si alguien pide un pedido de otra sucursal, el sistema responde que no existe.</p>
+        <p class="mas"><b>Si insisten:</b> en cada petición el servidor lee el token, busca al empleado en la base y toma su sucursal de ahí, no de lo que envía el navegador. Fuera de su alcance responde 404, así ni siquiera confirma que el registro existe. Solo el gerente distrital ve todas. Hay 117 verificaciones automáticas de este alcance.</p>
+      </div>
+    </details>
+    <details open>
+      <summary>¿Qué pasa si falla el pago?</summary>
+      <div class="respuesta">
+        <p class="corta">El pedido queda pendiente con las prendas reservadas, la clienta puede reintentar con otra tarjeta, y si no paga en 24 horas se cancela solo y el stock vuelve a la venta.</p>
+        <p class="mas"><b>Si insisten:</b> si Stripe sí cobró pero la confirmación se perdió, un webhook firmado o la revisión periódica lo registra y el pedido pasa a pagado. Si Stripe cobra un pedido que ya se había cancelado, el sistema devuelve el dinero a la tarjeta automáticamente. Nunca se cobra dos veces el mismo saldo.</p>
+      </div>
+    </details>
+    <details>
+      <summary>¿Guardan los datos de las tarjetas?</summary>
+      <div class="respuesta"><p class="corta">No. La tarjeta se escribe en un campo de Stripe y va directo a Stripe; nuestro servidor solo recibe el resultado del pago.</p></div>
+    </details>
+    <details>
+      <summary>¿Qué pasa si la clienta quiere devolver después de 24 horas, o devolver dos veces?</summary>
+      <div class="respuesta"><p class="corta">El sistema no lo permite: solo hay una solicitud por pedido, dentro de las 24 horas desde la entrega. El plazo es configurable.</p></div>
+    </details>
+    <details>
+      <summary>¿Cómo se calcula el reembolso si usó un cupón?</summary>
+      <div class="respuesta"><p class="corta">Se le devuelve lo que pagó por esa prenda: su precio menos la parte proporcional del descuento. El envío no se devuelve.</p></div>
+    </details>
+    <details>
+      <summary>¿Qué pasa si se cae el servidor o se borra la base?</summary>
+      <div class="respuesta"><p class="corta">La base está en la nube (Neon) y tenemos respaldos con un comando; la restauración guarda primero una copia del estado actual por si algo sale mal. El panel muestra el estado del sistema y los errores registrados.</p></div>
+    </details>
+    <details>
+      <summary>¿Cómo cambian la base de datos sin perder información?</summary>
+      <div class="respuesta"><p class="corta">Con migraciones: cada cambio es un archivo numerado que se aplica una sola vez al arrancar y solo agrega, nunca borra columnas.</p></div>
+    </details>
+    <details>
+      <summary>¿Cómo probaron que funciona?</summary>
+      <div class="respuesta"><p class="corta">Con pruebas automáticas que levantan una base de datos desechable y usan la API y las pantallas reales: más de mil doscientas verificaciones con un comando, <code>npm test</code>.</p></div>
+    </details>
+    <details>
+      <summary>¿Por qué tarda la primera vez que se abre?</summary>
+      <div class="respuesta"><p class="corta">Por el plan gratuito de Render: el servidor se duerme tras 15 minutos sin uso y tarda unos 50 segundos en despertar. En un plan pagado no pasa.</p></div>
+    </details>
+    <details>
+      <summary>¿Qué mejorarían?</summary>
+      <div class="respuesta"><p class="corta">Un servidor de correo propio para los avisos a las clientas, un plan de hosting sin pausas y reportes por temporada.</p></div>
+    </details>
+  </section>
+</div>
+
+<script>
+// Las casillas de preparación se recuerdan en este navegador.
+(() => {
+  const clave = "guion-distribuidora-casillas";
+  let marcadas = {};
+  try { marcadas = JSON.parse(localStorage.getItem(clave) || "{}"); } catch (e) { marcadas = {}; }
+  document.querySelectorAll('.grupo input[type="checkbox"]').forEach((c) => {
+    c.checked = !!marcadas[c.id];
+    c.addEventListener("change", () => {
+      marcadas[c.id] = c.checked;
+      try { localStorage.setItem(clave, JSON.stringify(marcadas)); } catch (e) { /* sin almacenamiento */ }
+    });
+  });
+})();
+</script>
