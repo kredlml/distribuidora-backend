@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { Cargando, ErrorCard, Pastilla } from "../../components/Estado";
 import Imagen from "../../components/Imagen";
+import ReembolsosCliente from "../../components/ReembolsosCliente";
 import useFetch from "../../hooks/useFetch";
 import * as devolucionesService from "../../services/devolucionesService";
 import { ESTADO_DEVOLUCION, MOTIVOS_DEVOLUCION, RESULTADO_REVISION, TIPOS_DEVOLUCION } from "../../utils/constants";
@@ -41,14 +42,17 @@ export default function DevolucionDetalle() {
           ))}
           {d.observacion && <p className="sm muted sec">Tu comentario: {d.observacion}</p>}
         </section>
-        <section className="card">
-          <h2>Seguimiento</h2>
-          <ul className="tl">
-            {(d.historial || []).map((h, i) => (
-              <li key={i}><div>{(ESTADO_DEVOLUCION[h.estado] || { texto: h.estado }).texto}</div><div className="muted sm">{fecha(h.fecha, true)}</div></li>
-            ))}
-          </ul>
-        </section>
+        <aside className="stack">
+          <ReembolsosCliente reembolsos={d.Reembolsos} />
+          <section className="card">
+            <h2>Seguimiento</h2>
+            <ul className="tl">
+              {(d.historial || []).map((h, i) => (
+                <li key={i}><div>{(ESTADO_DEVOLUCION[h.estado] || { texto: h.estado }).texto}</div><div className="muted sm">{fecha(h.fecha, true)}</div></li>
+              ))}
+            </ul>
+          </section>
+        </aside>
       </div>
     </>
   );

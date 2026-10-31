@@ -1,39 +1,45 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChipBar, ChipEstado } from "../../components/Chip";
 import { Cargando, ErrorCard } from "../../components/Estado";
+import Paginador from "../../components/Paginador";
 import SearchBox from "../../components/SearchBox";
 import { useAuth } from "../../context/AuthContext";
+import useDebounced, { useCorregirPagina } from "../../hooks/useDebounced";
 import useFetch from "../../hooks/useFetch";
 import * as devolucionesService from "../../services/devolucionesService";
+import * as reembolsosService from "../../services/reembolsosService";
 import { CHIPS, ESTADOS, TIPOS } from "../../utils/constants";
-import { fecha, humanizar, nombreCli } from "../../utils/format";
-import { PERMISOS, ROLES } from "../../utils/permisos";
+import { dinero, fecha, humanizar, nombreCli } from "../../utils/format";
+import { PERMISOS, ROLES, puede } from "../../utils/permisos";
+import "../Pedidos/Pedidos.css";
 import "./Devoluciones.css";
 
 export default function Devoluciones() {
   const { sesion, rol } = useAuth();
   const navigate = useNavigate();
   const [filtros, setFiltros] = useState({ estado: "", tipo: "", desde: "", hasta: "" });
-  const [q, setQ] = useState("");
-  const set = (k) => (v) => setFiltros((f) => ({ ...f, [k]: v }));
+  const [q, setQEstado] = useState("");
+  const [pagina, setPagina] = useState(1);
+  // Cambiar un filtro o la búsqueda vuelve a la primera página.
+  const set = (k) => (v) => { setFiltros((f) => ({ ...f, [k]: v })); setPagina(1); };
+  const setQ = (v) => { setQEstado(v); setPagina(1); };
+  const qBuscar = useDebounced(q.trim());
 
   const { data, error, loading, reload } = useFetch(
-    () => devolucionesService.listar(filtros),
-    [filtros.estado, filtros.tipo, filtros.desde, filtros.hasta],
+    () => devolucionesService.listar({ ...filtros, q: qBuscar, pagina }),
+    [filtros.estado, filtros.tipo, filtros.desde, filtros.hasta, qBuscar, pagina],
   );
 
-  const datos = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    return (data || []).filter((d) => !t || [d.id_devolucion, d.id_pedido, nombreCli(d)].join(" ").toLowerCase().includes(t));
-  }, [data, q]);
+  useCorregirPagina(data, setPagina);
+  const datos = (data && data.datos) || [];
 
   return (
     <>
       <div className="head">
         <div>
           <h1>Devoluciones y cambios</h1>
-          <div className="muted sm">{data ? `${datos.length} resultado${datos.length === 1 ? "" : "s"}` : " "}</div>
+          <div className="muted sm">{data ? `${data.total} resultado${data.total === 1 ? "" : "s"}` : " "}</div>
         </div>
         <div className="bar">
           <span className="muted sm">{sesion.nombre}, {sesion.puesto || "sin puesto"}</span>
@@ -41,6 +47,7 @@ export default function Devoluciones() {
         </div>
       </div>
       {!ROLES.includes(rol) && <div className="card sec err">Tu puesto no está entre ADMIN, CAJERO o BODEGUERO: podrás consultar, pero no gestionar devoluciones.</div>}
+      {puede(rol, "cobrar") && <PorEntregar />}
       <div className="bar">
         <SearchBox label="Buscar" placeholder="Buscar por devolución, pedido o cliente" value={q} onChange={(ev) => setQ(ev.target.value)} />
       </div>
@@ -66,7 +73,29 @@ export default function Devoluciones() {
             </button>
           ))
           : <Cargando>No hay devoluciones con estos filtros.</Cargando>}
+        <Paginador datos={data} nombre="solicitudes" onPagina={setPagina} />
       </div>
     </>
+  );
+}
+
+// Reembolsos que caja aún debe entregar (efectivo, POS, PayPal) o que Stripe no completó.
+function PorEntregar() {
+  const { data } = useFetch(() => reembolsosService.listar({ estado: "PENDIENTE,FALLIDO" }), []);
+  if (!data || !data.length) return null;
+  const total = data.reduce((s, r) => s + Number(r.monto), 0);
+  return (
+    <section className="card sec">
+      <h2>Reembolsos por entregar: {dinero(total)}</h2>
+      {data.map((r) => (
+        <Link className="item fila-pedido" key={r.id_reembolso} to={`/devolucion/${r.id_devolucion}`}>
+          <span>
+            Devolución #{r.id_devolucion}, {r.Pedido && r.Pedido.Cliente ? nombreCli(r.Pedido) : `pedido ${r.id_pedido}`}<br />
+            <span className="muted sm">{r.metodo === "STRIPE" ? (r.estado === "FALLIDO" ? "Stripe lo rechazó: entregar en efectivo" : "A la tarjeta (pendiente en Stripe)") : r.metodo === "TARJETA" ? "Reversión en POS" : r.metodo === "PAYPAL" ? "PayPal" : "Efectivo en caja"}{r.Pedido && r.Pedido.Sucursal ? `, ${r.Pedido.Sucursal.nombre}` : ""}</span>
+          </span>
+          <b>{dinero(r.monto)}</b>
+        </Link>
+      ))}
+    </section>
   );
 }

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Cargando, ErrorCard, Pastilla } from "../../components/Estado";
+import Desglose from "../../components/Desglose";
 import Imagen from "../../components/Imagen";
 import Modal from "../../components/Modal";
+import ReembolsosCliente from "../../components/ReembolsosCliente";
 import PasosPedido from "../../components/PasosPedido";
 import { useToast } from "../../context/ToastContext";
 import useFetch from "../../hooks/useFetch";
@@ -27,6 +29,7 @@ export default function Pedido() {
   const pagos = (p.Pagos || []).filter((x) => x.estado_pago === "COMPLETADO");
   const devoluciones = p.Devolucions || [];
   const terminado = (msg) => { if (msg) aviso(msg); res.reload(); };
+  const vencido = !!p.pago_vence && new Date(p.pago_vence) <= new Date() && !(p.pago_en_proceso > 0);
 
   return (
     <>
@@ -38,10 +41,20 @@ export default function Pedido() {
 
       <section className="card"><PasosPedido estado={p.estado} /></section>
 
-      {p.estado === "PENDIENTE" && (
+      {/* Venció el plazo y no hay un cobro con tarjeta en curso: ya no se puede pagar (se cancelará solo). */}
+      {p.estado === "PENDIENTE" && vencido && (
+        <section className="card sec">
+          <h2>El plazo para pagar venció</h2>
+          <p className="muted sm">Este pedido se cancelará en breve y sus prendas volverán a la venta. Si aún las quieres, <Link to="/">haz un pedido nuevo</Link>.</p>
+        </section>
+      )}
+      {p.estado === "PENDIENTE" && !vencido && (
         <section className="card sec pagar-card">
           <h2>Completa tu pago</h2>
-          <p className="muted sm">Tus prendas están reservadas. El pedido se prepara en cuanto se confirme el pago.</p>
+          <p className="muted sm">
+            Tus prendas están reservadas{p.pago_vence ? <> hasta el <b>{fecha(p.pago_vence, true)}</b>; si no se paga antes, el pedido se cancela solo y las prendas vuelven a la venta</> : ""}.
+            {" "}El pedido se prepara en cuanto se confirme el pago.
+          </p>
           {p.a_pagar_con_tarjeta < p.saldo && (
             <p className="muted sm">Tienes {dinero(p.saldo - p.a_pagar_con_tarjeta)} registrados en tienda pendientes de confirmar; con tarjeta pagas el resto.</p>
           )}
@@ -65,7 +78,7 @@ export default function Pedido() {
               <div>{dinero(l.subtotal)}</div>
             </div>
           ))}
-          <div className="fila total"><span>Total</span><span>{dinero(p.total)}</span></div>
+          {p.desglose ? <Desglose d={p.desglose} cupon={p.Cupon ? p.Cupon.codigo : ""} /> : <div className="fila total"><span>Total</span><span>{dinero(p.total)}</span></div>}
           {p.pagado > 0 && <div className="fila sm muted"><span>Pagado</span><span>{dinero(p.pagado)}</span></div>}
           {p.estado === "PENDIENTE" && <div className="fila sm"><span>Por pagar</span><span>{dinero(p.saldo)}</span></div>}
         </section>
@@ -104,6 +117,7 @@ export default function Pedido() {
               )}
             </section>
           )}
+          <ReembolsosCliente reembolsos={p.Reembolsos} />
         </aside>
       </div>
 

@@ -2,7 +2,8 @@ import { api } from "./api";
 
 export const listar = (filtros = {}) => {
   const p = new URLSearchParams();
-  ["estado", "tipo", "desde", "hasta"].forEach((k) => filtros[k] && p.set(k, filtros[k]));
+  // Con `pagina` responde { datos, total, pagina, paginas }; `q` busca por número o clienta.
+  ["estado", "tipo", "desde", "hasta", "q", "pagina"].forEach((k) => filtros[k] && p.set(k, filtros[k]));
   return api("/api/devoluciones?" + p);
 };
 export const obtener = (id) => api(`/api/devoluciones/${id}`);

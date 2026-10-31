@@ -896,6 +896,58 @@ pm.test("Devuelve sesión del mismo cliente", () => pm.expect(pm.response.json()
 );
 
 // ---------------------------------------------------------------------------
+// 16. Promociones, salud, reembolsos y cuentas
+// ---------------------------------------------------------------------------
+
+const mejoras = folder("16. Promociones, salud, reembolsos y cuentas", [
+  req("Salud de la API (pública)", "GET", "/api/salud", {
+    tests: `${expectStatus(200)}
+const s = pm.response.json();
+pm.test("La base responde", () => pm.expect(s.base).to.eql("ok"));`,
+    description: "Para el monitor del hosting: 200 si la API y la base responden, 503 si la base no. No expone datos internos.",
+  }),
+  req("Estado del sistema (DISTRITAL)", "GET", "/api/salud/detalle", {
+    auth: true,
+    tests: `${expectStatus(200)}
+const s = pm.response.json();
+pm.test("Sin migraciones pendientes", () => pm.expect(s.migraciones.pendientes).to.have.length(0));`,
+    description: "Migraciones aplicadas/pendientes, columnas faltantes, errores registrados, pendientes (pedidos sin pagar, reembolsos) y servicios configurados (sin secretos).",
+  }),
+  req("Errores del servidor (DISTRITAL)", "GET", "/api/salud/errores", { auth: true, query: { pagina: 1 }, tests: expectStatus(200) }),
+  req("Crear cupón (DISTRITAL)", "POST", "/api/cupones", {
+    auth: true,
+    body: { codigo: "POSTMAN{{$timestamp}}", descripcion: "10% de prueba", tipo: "PORCENTAJE", valor: 10, minimo_compra: 0 },
+    tests: `${captureId("id_cupon", "body.id_cupon", "Cupón creado")}
+if (body.codigo) pm.collectionVariables.set("codigo_cupon", body.codigo);`,
+    description: "tipo PORCENTAJE (valor 1–100) o MONTO (quetzales). Opcionales: minimo_compra, desde/hasta (AAAA-MM-DD), usos_maximos, id_sucursal, activo.",
+  }),
+  req("Listar cupones", "GET", "/api/cupones", { auth: true, tests: expectStatus(200) }),
+  req("Editar cupón", "PUT", "/api/cupones/{{id_cupon}}", { auth: true, body: { descripcion: "10% editado" }, tests: expectStatus(200) }),
+  req("Cotizar venta de mostrador con cupón", "POST", "/api/pedidos/cotizar", {
+    auth: true,
+    body: { id_sucursal: "{{id_sucursal}}", cupon: "{{codigo_cupon}}", detalles: [{ id_producto: "{{id_producto}}", cantidad: 1 }] },
+    tests: `${expectStatus(200)}
+const c = pm.response.json();
+pm.test("Aplica el descuento y desglosa el IVA", () => { pm.expect(c.descuento).to.be.above(0); pm.expect(c).to.have.property("iva"); });`,
+  }),
+  req("Cotizar en la tienda (envío, cupón, IVA)", "POST", "/api/tienda/cotizar", {
+    auth: "token_cliente",
+    body: { id_sucursal: "{{id_sucursal}}", cupon: "{{codigo_cupon}}", retiro_en_sucursal: false, detalles: [{ id_producto: "{{id_producto}}", cantidad: 1 }] },
+    tests: `${expectStatus(200)}
+const c = pm.response.json();
+pm.test("Trae subtotal, descuento, envío, total e IVA", () => ["subtotal", "descuento", "costo_envio", "total", "iva"].forEach((k) => pm.expect(c).to.have.property(k)));`,
+    description: "Envío: ENVIO_COSTO (25 por defecto), gratis desde ENVIO_GRATIS_DESDE (300) o con retiro_en_sucursal. Un cupón que no aplica se informa en cupon_error.",
+  }),
+  req("Reembolsos (de la propia sucursal)", "GET", "/api/reembolsos", { auth: true, query: { estado: "PENDIENTE,FALLIDO" }, tests: expectStatus(200),
+    description: "Los crea el reintegro de una devolución o un cambio por una variante más barata. PUT /api/reembolsos/:id/completar (caja entrega efectivo/POS/PayPal) y POST /api/reembolsos/:id/reintentar (Stripe)." }),
+  req("¿Olvidaste tu contraseña? (tienda)", "POST", "/api/tienda/auth/olvide", {
+    body: { email: "{{cliente_email}}" },
+    tests: expectStatus(200),
+    description: "Siempre responde lo mismo (no revela si el correo existe). Envía un enlace de un solo uso (1 h) al correo; con él se usa POST /api/tienda/auth/restablecer { email, token, password }.",
+  }),
+], "Mejoras finales: cupones y envío, monitoreo, reembolsos y restablecimiento de contraseña.");
+
+// ---------------------------------------------------------------------------
 
 const collection = {
   info: {
@@ -905,7 +957,7 @@ const collection = {
       "Colección importable en Postman con todos los endpoints reales del backend distribuidora-backend (Express + Sequelize + PostgreSQL), agrupados por módulo.\n\nRequiere el backend corriendo (`npm start`, puerto definido en .env.development, por defecto 8080). Ejecutar primero '0. Autenticación > Registro' y 'Login' - el token JWT se guarda automáticamente en la variable de colección `token` y las requests protegidas lo usan vía el header Authorization.",
     schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
   },
-  item: [auth, sucursales, clientes, proveedores, categorias, empleados, productos, inventario, pedidos, detallePedido, pagos, estadosPedido, reportes, devoluciones, auditoria, webhook, tienda],
+  item: [auth, sucursales, clientes, proveedores, categorias, empleados, productos, inventario, pedidos, detallePedido, pagos, estadosPedido, reportes, devoluciones, auditoria, webhook, tienda, mejoras],
   variable: [
     { key: "baseUrl", value: "http://localhost:8080" },
     { key: "token", value: "" },
@@ -939,6 +991,8 @@ const collection = {
     { key: "codigo_web", value: "" },
     { key: "id_pedido_efectivo", value: "1" },
     { key: "total_efectivo", value: "0" },
+    { key: "id_cupon", value: "1" },
+    { key: "codigo_cupon", value: "" },
   ],
 };
 

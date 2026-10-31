@@ -8,6 +8,11 @@ const Pago = db.pago;
 const { registrarAuditoria } = require("../utils/auditoria");
 const { errorHttp, totalPagado, crearPedido, cancelarPedido } = require("../utils/facturacion");
 const { sucursalDe, whereSucursal, enAlcance, clienteEnAlcance } = require("../utils/alcance");
+const notificaciones = require("../utils/notificaciones");
+const { venceEl } = require("../utils/vencimientos");
+const { leerPaginacion, pagina, textoBusqueda, idBuscado } = require("../utils/paginacion");
+const { cotizar } = require("../utils/cotizacion");
+const { desglosePedido } = require("../utils/precios");
 
 const ESTADOS_PEDIDO_VALIDOS = ['PENDIENTE', 'PROCESADO', 'ENVIADO', 'ENTREGADO', 'CANCELADO'];
 
@@ -53,7 +58,9 @@ exports.create = async (req, res) => {
       id_sucursal: idSucursal,
       lineasRecibidas,
       id_empleado: req.empleadoId,
-      direccion_entrega: typeof body.direccion_entrega === 'string' ? body.direccion_entrega.trim().slice(0, 200) : null
+      direccion_entrega: typeof body.direccion_entrega === 'string' ? body.direccion_entrega.trim().slice(0, 200) : null,
+      // Cupón opcional (en mostrador no hay costo de envío).
+      cupon: typeof body.cupon === 'string' && body.cupon.trim() ? body.cupon : undefined
     }, t);
 
     await t.commit();
@@ -66,6 +73,19 @@ exports.create = async (req, res) => {
 
     await t.rollback();
     res.status(error.status || 400).send({ message: error.message });
+  }
+};
+
+// POST /api/pedidos/cotizar — { id_sucursal, detalles, cupon? }: total de una venta de mostrador
+// con el descuento del cupón (sin envío) antes de crearla.
+exports.cotizar = async (req, res) => {
+  try {
+    const b = req.body || {};
+    const propia = sucursalDe(req);
+    const id_sucursal = propia !== null && propia > 0 ? propia : b.id_sucursal;
+    res.send(await cotizar({ detalles: b.detalles, id_sucursal, cupon: b.cupon, envio: null }));
+  } catch (error) {
+    res.status(error.status || 500).send({ message: error.message || "Error al cotizar la venta." });
   }
 };
 
@@ -113,7 +133,17 @@ exports.findAll = async (req, res) => {
       if (hasta) where.fecha_pedido[Op.lte] = new Date(`${hasta}T23:59:59.999${ZONA_TIENDA}`);
     }
 
-    const data = await Pedido.findAll({
+    // ?q= busca por número de pedido o por nombre de la clienta.
+    const pag = leerPaginacion(req.query);
+    const like = textoBusqueda(req.query.q), id = idBuscado(req.query.q);
+    if (like) {
+      where[Op.and] = [{ [Op.or]: [
+        ...(id ? [{ id_pedido: id }] : []),
+        db.sequelize.where(db.sequelize.fn('concat_ws', ' ', db.sequelize.col('Cliente.nombre'), db.sequelize.col('Cliente.apellido')), { [Op.iLike]: like })
+      ] }];
+    }
+
+    const consulta = {
       where,
       include: [
         { model: Cliente, attributes: ['id_cliente', 'nombre', 'apellido'] },
@@ -121,10 +151,16 @@ exports.findAll = async (req, res) => {
         { model: db.empleado, attributes: ['id_empleado', 'nombre', 'apellido'] }
       ],
       order: [['id_pedido', 'DESC']]
-    });
-    res.send(data.map((p) => ({ ...p.get({ plain: true }), origen: origenDe(p) })));
+    };
+    const plano = (p) => ({ ...p.get({ plain: true }), origen: origenDe(p) });
+    if (pag) {
+      const { rows, count } = await Pedido.findAndCountAll({ ...consulta, limit: pag.limit, offset: pag.offset, distinct: true });
+      return res.send(pagina(rows.map(plano), count, pag));
+    }
+    const data = await Pedido.findAll(consulta);
+    res.send(data.map(plano));
   } catch (error) {
-    res.status(500).send({ message: error.message || "Error al recuperar los pedidos." });
+    res.status(error.status || 500).send({ message: error.message || "Error al recuperar los pedidos." });
   }
 };
 
@@ -159,7 +195,8 @@ exports.findOne = async (req, res) => {
           model: Pago,
           attributes: ['id_pago', 'monto', 'metodo_pago', 'estado_pago', 'fecha_pago', 'id_transaccion_externa']
         },
-        { model: db.devolucion, attributes: ['id_devolucion', 'tipo', 'estado'] }
+        { model: db.devolucion, attributes: ['id_devolucion', 'tipo', 'estado'] },
+        { model: db.cupon, attributes: ['id_cupon', 'codigo', 'descripcion', 'tipo', 'valor'] }
       ],
       order: [[db.detalle_pedido, 'id_detalle_pedido', 'ASC'], [Pago, 'id_pago', 'ASC']]
     });
@@ -175,7 +212,11 @@ exports.findOne = async (req, res) => {
         por_confirmar,
         saldo,
         // Lo que todavía se puede cobrar sin pasarse del total (descuenta los pagos por confirmar).
-        por_cobrar: Math.max(0, Math.round((saldo - por_confirmar) * 100) / 100)
+        por_cobrar: Math.max(0, Math.round((saldo - por_confirmar) * 100) / 100),
+        // Si sigue sin pagarse después de esta fecha, se cancela solo (salvo que tenga pagos).
+        pago_vence: venceEl(pedido),
+        // Subtotal de prendas, descuento del cupón, envío, total e IVA incluido.
+        desglose: desglosePedido(pedido, (pedido.DetallePedidos || []).reduce((s, l) => s + Number(l.subtotal), 0))
       });
     } else {
       res.status(404).send({ message: `No se encontró el Pedido con id=${id}.` });
@@ -308,6 +349,10 @@ exports.actualizarEstado = async (req, res) => {
       message: `Pedido actualizado de ${estadoAnterior} a ${estado}.`,
       pedido
     });
+    // Aviso por correo a la clienta (después de confirmar; nunca falla la operación).
+    const aviso = { PROCESADO: notificaciones.pedidoPagado, ENVIADO: notificaciones.pedidoEnviado, ENTREGADO: notificaciones.pedidoEntregado }[estado];
+    if (aviso) aviso(pedido.id_pedido);
+    if (estado === 'CANCELADO') notificaciones.pedidoCancelado(pedido.id_pedido, "por la tienda");
   } catch (error) {
     await t.rollback();
     res.status(error.status || 500).send({ message: error.message || "Error al actualizar el estado del pedido." });

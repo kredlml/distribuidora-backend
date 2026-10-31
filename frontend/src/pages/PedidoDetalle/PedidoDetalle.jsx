@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Cargando, ErrorCard } from "../../components/Estado";
+import Reembolsos from "../../components/Reembolsos";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import useFetch from "../../hooks/useFetch";
@@ -72,9 +73,15 @@ export default function PedidoDetalle() {
         {/* Acciones del estado actual */}
         {(pendiente || siguiente) && (
           <section className="card">
-            <h2>{pendiente ? (p.saldo > 0 ? `Falta cobrar ${dinero(p.saldo)}` : "Pedido sin productos") : "Siguiente paso"}</h2>
+            <h2>{pendiente ? (p.saldo > 0 ? `Falta cobrar ${dinero(p.saldo)}` : lineas.length ? "Nada por cobrar" : "Pedido sin productos") : "Siguiente paso"}</h2>
             {pendiente && p.por_confirmar > 0 && <p className="muted sm">Hay {dinero(p.por_confirmar)} en pagos por confirmar.</p>}
             {pendiente && <p className="muted sm">Las prendas ya están reservadas. Cuando los pagos completados cubren el total, el pedido pasa solo a «Pagado».</p>}
+            {pendiente && p.pago_vence && (
+              <p className="sm">
+                {new Date(p.pago_vence) <= new Date() ? "Venció el plazo de pago" : "Si no se paga, se cancela solo el"} <b>{fecha(p.pago_vence)}</b>
+                {p.pagado > 0 || pagosPendientes.length ? " (no se cancelará mientras tenga pagos registrados)." : " y las prendas vuelven al stock."}
+              </p>
+            )}
             {siguiente && <p className="muted sm">{siguiente.texto}</p>}
             <div className="acciones-pedido">
               {pendiente && cobra && p.por_cobrar > 0 && <button className="btn pri" onClick={() => setCobrando(true)}>Registrar pago</button>}
@@ -128,7 +135,15 @@ export default function PedidoDetalle() {
           </div>
           {editaLineas && <AgregarLinea pedido={p} onAgregada={() => { aviso("Prenda agregada."); reload(); }} />}
           <div className="sec">
+            {p.desglose && (p.desglose.descuento > 0 || p.desglose.costo_envio > 0) && (
+              <>
+                <div className="fila-total sm"><span>Subtotal</span><span>{dinero(p.desglose.subtotal)}</span></div>
+                {p.desglose.descuento > 0 && <div className="fila-total sm"><span>Descuento{p.Cupon ? ` (cupón ${p.Cupon.codigo})` : ""}</span><span>−{dinero(p.desglose.descuento)}</span></div>}
+                {p.desglose.costo_envio > 0 && <div className="fila-total sm"><span>Envío</span><span>{dinero(p.desglose.costo_envio)}</span></div>}
+              </>
+            )}
             <div className="fila-total grande"><span>Total</span><span>{dinero(p.total)}</span></div>
+            {p.desglose && <div className="fila-total sm muted"><span>IVA incluido ({p.desglose.porcentaje}%)</span><span>{dinero(p.desglose.iva)}</span></div>}
             <div className="fila-total sm muted"><span>Pagado</span><span>{dinero(p.pagado)}</span></div>
             {pendiente && <div className="fila-total sm"><span>Saldo</span><span>{dinero(p.saldo)}</span></div>}
           </div>
@@ -181,6 +196,8 @@ export default function PedidoDetalle() {
             ))}
           </section>
         )}
+
+        {(p.Devolucions || []).length > 0 && <Reembolsos filtro={{ id_pedido: p.id_pedido }} />}
       </div>
 
       {cobrando && pendiente && cobra && p.por_cobrar > 0 && (

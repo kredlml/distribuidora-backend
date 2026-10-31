@@ -64,9 +64,13 @@ exports.verificarCliente = (req, res, next) => {
       return res.status(403).send({ message: "¡Acceso denegado! Este token no pertenece a un cliente de la tienda." });
     }
     try {
-      const cliente = await db.cliente.findByPk(decoded.id_cliente);
+      const cliente = await db.cliente.unscoped().findByPk(decoded.id_cliente, { attributes: ["id_cliente", "activo", "token_version"] });
       if (!cliente || !cliente.activo) {
         return res.status(401).send({ message: "¡Token no autorizado! La cuenta no existe o está desactivada." });
+      }
+      // La contraseña cambió después de emitir este token: la sesión ya no vale.
+      if ((decoded.v || 0) !== (cliente.token_version || 0)) {
+        return res.status(401).send({ message: "Tu sesión se cerró porque la contraseña cambió. Vuelve a iniciar sesión." });
       }
       req.clienteId = cliente.id_cliente;
       next();

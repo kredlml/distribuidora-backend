@@ -48,10 +48,9 @@ export default function Carrito() {
         </section>
         <aside className="card resumen">
           <h2>Resumen</h2>
-          <div className="fila"><span>Subtotal</span><span>{dinero(subtotal)}</span></div>
-          <div className="fila muted sm"><span>Envío</span><span>Sin costo</span></div>
-          <div className="fila total"><span>Total</span><span>{dinero(subtotal)}</span></div>
-          <p className="muted sm">El total final se confirma al crear el pedido con los precios vigentes.</p>
+          <div className="fila total"><span>Subtotal</span><span>{dinero(subtotal)}</span></div>
+          <div className="fila muted sm"><span>Envío y cupones</span><span>Al finalizar</span></div>
+          <p className="muted sm">En el siguiente paso eliges envío a domicilio o retiro en sucursal (sin costo) y puedes aplicar un cupón; ahí ves el total exacto.</p>
           <button className="btn pri ancho" disabled={!revision.listo} onClick={() => navigate("/checkout")}>
             {revision.loading ? "Revisando existencias…" : "Continuar con la compra"}
           </button>

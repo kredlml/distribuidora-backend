@@ -29,6 +29,7 @@ export default function MisPedidos() {
                   <div className="pedido-info">
                     <div>Pedido #{p.id_pedido}</div>
                     <div className="muted sm">{fecha(p.fecha_pedido)} · {unidades} prenda{unidades === 1 ? "" : "s"}{p.Sucursal ? ` · desde ${p.Sucursal.nombre}` : ""}</div>
+                    {p.pago_vence && <div className="sm">Págalo antes del {fecha(p.pago_vence, true)}</div>}
                   </div>
                   <div className="pedido-der">
                     <Pastilla info={ESTADO_PEDIDO[p.estado]} />

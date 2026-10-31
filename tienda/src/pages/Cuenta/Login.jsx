@@ -26,6 +26,7 @@ export default function Login() {
         <div className="err" role="alert">{error}</div>
         <button className="btn pri" disabled={enviando}>{enviando ? "Entrando…" : "Iniciar sesión"}</button>
       </form>
+      <p className="sm"><Link to="/olvide" state={location.state}>¿Olvidaste tu contraseña?</Link></p>
       <p className="sm">¿No tienes cuenta? <Link to="/registro" state={location.state}>Crea una</Link></p>
       <p className="sm">¿Te registraron en caja? <Link to="/activar" state={location.state}>Activa tu cuenta con tu código</Link></p>
     </section>

@@ -36,6 +36,8 @@ export async function descargarReportePdf(r, { titulo }) {
     ["Ventas del periodo", dinero(k.ventas)], ["Pedidos pagados", String(k.pedidos)], ["Ticket promedio", dinero(k.ticket_promedio)], ["Unidades vendidas", String(k.unidades)],
     ["Ventas de hoy", `${dinero(k.ventas_hoy)} (${k.pedidos_hoy})`], ["Por cobrar", `${dinero(k.pendientes_cobro.monto)} (${k.pendientes_cobro.pedidos})`],
     ["Pedidos cancelados", String(k.cancelados)], ["Devoluciones / cambios", `${k.devoluciones.devoluciones} / ${k.devoluciones.cambios}`],
+    ["Reembolsado", `${dinero(k.reembolsos.monto)} (${k.reembolsos.cantidad})`], ["Ventas netas", dinero(k.ventas_netas)],
+    ["Descuentos (cupones)", dinero(k.descuentos)], ["Envíos cobrados", dinero(k.envios)], [`IVA incluido (${k.iva_porcentaje}%)`, dinero(k.iva)],
   ];
   const anchoT = (ancho - margen * 2 - 3 * 8) / 4;
   tarjetas.forEach(([t, v], i) => {
@@ -43,10 +45,13 @@ export async function descargarReportePdf(r, { titulo }) {
     const yy = y + Math.floor(i / 4) * 52;
     doc.setFillColor(242, 244, 245).roundedRect(x, yy, anchoT, 44, 6, 6, "F");
     doc.setFontSize(8).setTextColor(110).text(t, x + 8, yy + 15);
-    doc.setFontSize(12).setTextColor(0).setFont("helvetica", "bold").text(v, x + 8, yy + 33);
+    // Montos grandes: se achica la fuente para que no se salgan de la tarjeta.
+    doc.setFontSize(12).setTextColor(0).setFont("helvetica", "bold");
+    for (let f = 12; f > 7 && doc.getTextWidth(v) > anchoT - 16; f--) doc.setFontSize(f - 1);
+    doc.text(v, x + 8, yy + 33);
     doc.setFont("helvetica", "normal");
   });
-  y += 2 * 52 + 6;
+  y += Math.ceil(tarjetas.length / 4) * 52 + 6;
 
   const tabla = (tituloTabla, head, body, opciones = {}) => {
     if (!body.length) return;
@@ -71,6 +76,7 @@ export async function descargarReportePdf(r, { titulo }) {
     r.por_prenda.map((p, i) => [i + 1, prenda(p), p.tipo || "-", p.unidades, dinero(p.ventas)]), derecha([0, 3, 4]));
   tabla("Ventas por tipo de prenda", ["Tipo", "Unidades", "Ventas"], r.por_tipo.map((t) => [t.tipo, t.unidades, dinero(t.ventas)]), derecha([1, 2]));
   tabla("Cobros por método de pago", ["Método", "Pagos", "Monto"], r.por_metodo.map((m) => [METODOS_PAGO[m.metodo] || m.metodo, m.pagos, dinero(m.monto)]), derecha([1, 2]));
+  tabla("Ventas con cupón", ["Cupón", "Pedidos", "Descuento", "Ventas"], (r.por_cupon || []).map((c) => [c.codigo, c.pedidos, dinero(c.descuento), dinero(c.ventas)]), derecha([1, 2, 3]));
   tabla("Ventas por origen", ["Origen", "Pedidos", "Ventas"], r.por_origen.map((o) => [NOMBRE_ORIGEN[o.origen] || o.origen, o.pedidos, dinero(o.ventas)]), derecha([1, 2]));
   tabla("Ventas por vendedor (mostrador)", ["Vendedor", "Sucursal", "Pedidos", "Ventas"],
     r.por_vendedor.map((v) => [`${v.nombre} ${v.apellido || ""}`.trim(), v.sucursal, v.pedidos, dinero(v.ventas)]), derecha([2, 3]));

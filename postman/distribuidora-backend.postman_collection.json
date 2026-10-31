@@ -3758,6 +3758,347 @@
           "response": []
         }
       ]
+    },
+    {
+      "id": "distribuidora-136",
+      "name": "16. Promociones, salud, reembolsos y cuentas",
+      "description": "Mejoras finales: cupones y envío, monitoreo, reembolsos y restablecimiento de contraseña.",
+      "item": [
+        {
+          "id": "distribuidora-126",
+          "name": "Salud de la API (pública)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"La base responde\", () => pm.expect(s.base).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/salud",
+            "description": "Para el monitor del hosting: 200 si la API y la base responden, 503 si la base no. No expone datos internos."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-127",
+          "name": "Estado del sistema (DISTRITAL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"Sin migraciones pendientes\", () => pm.expect(s.migraciones.pendientes).to.have.length(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/salud/detalle",
+            "description": "Migraciones aplicadas/pendientes, columnas faltantes, errores registrados, pendientes (pedidos sin pagar, reembolsos) y servicios configurados (sin secretos)."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-128",
+          "name": "Errores del servidor (DISTRITAL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/salud/errores?pagina=1"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-129",
+          "name": "Crear cupón (DISTRITAL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Cupón creado\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const body = pm.response.json();",
+                  "const value = body.id_cupon;",
+                  "if (value) pm.collectionVariables.set(\"id_cupon\", value);",
+                  "if (body.codigo) pm.collectionVariables.set(\"codigo_cupon\", body.codigo);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"POSTMAN{{$timestamp}}\",\n  \"descripcion\": \"10% de prueba\",\n  \"tipo\": \"PORCENTAJE\",\n  \"valor\": 10,\n  \"minimo_compra\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/cupones",
+            "description": "tipo PORCENTAJE (valor 1–100) o MONTO (quetzales). Opcionales: minimo_compra, desde/hasta (AAAA-MM-DD), usos_maximos, id_sucursal, activo."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-130",
+          "name": "Listar cupones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/cupones"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-131",
+          "name": "Editar cupón",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"10% editado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/cupones/{{id_cupon}}"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-132",
+          "name": "Cotizar venta de mostrador con cupón",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const c = pm.response.json();",
+                  "pm.test(\"Aplica el descuento y desglosa el IVA\", () => { pm.expect(c.descuento).to.be.above(0); pm.expect(c).to.have.property(\"iva\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"cupon\": \"{{codigo_cupon}}\",\n  \"detalles\": [\n    {\n      \"id_producto\": \"{{id_producto}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/pedidos/cotizar"
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-133",
+          "name": "Cotizar en la tienda (envío, cupón, IVA)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const c = pm.response.json();",
+                  "pm.test(\"Trae subtotal, descuento, envío, total e IVA\", () => [\"subtotal\", \"descuento\", \"costo_envio\", \"total\", \"iva\"].forEach((k) => pm.expect(c).to.have.property(k)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_cliente}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sucursal\": \"{{id_sucursal}}\",\n  \"cupon\": \"{{codigo_cupon}}\",\n  \"retiro_en_sucursal\": false,\n  \"detalles\": [\n    {\n      \"id_producto\": \"{{id_producto}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/cotizar",
+            "description": "Envío: ENVIO_COSTO (25 por defecto), gratis desde ENVIO_GRATIS_DESDE (300) o con retiro_en_sucursal. Un cupón que no aplica se informa en cupon_error."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-134",
+          "name": "Reembolsos (de la propia sucursal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reembolsos?estado=PENDIENTE%2CFALLIDO",
+            "description": "Los crea el reintegro de una devolución o un cambio por una variante más barata. PUT /api/reembolsos/:id/completar (caja entrega efectivo/POS/PayPal) y POST /api/reembolsos/:id/reintentar (Stripe)."
+          },
+          "response": []
+        },
+        {
+          "id": "distribuidora-135",
+          "name": "¿Olvidaste tu contraseña? (tienda)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{cliente_email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/tienda/auth/olvide",
+            "description": "Siempre responde lo mismo (no revela si el correo existe). Envía un enlace de un solo uso (1 h) al correo; con él se usa POST /api/tienda/auth/restablecer { email, token, password }."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -3888,6 +4229,14 @@
     {
       "key": "total_efectivo",
       "value": "0"
+    },
+    {
+      "key": "id_cupon",
+      "value": "1"
+    },
+    {
+      "key": "codigo_cupon",
+      "value": ""
     }
   ]
 }

@@ -3,21 +3,19 @@ const Sequelize = require("sequelize");
 
 const sequelizeOptions = {
   host: dbConfig.HOST,
+  port: dbConfig.PORT,
   dialect: dbConfig.dialect,
+  // Sin el log de cada consulta SQL en consola (se activa con DB_LOG_SQL=true para depurar).
+  logging: process.env.DB_LOG_SQL === "true" ? console.log : false,
   pool: {
     max: dbConfig.pool.max,
     min: dbConfig.pool.min,
     acquire: dbConfig.pool.acquire,
     idle: dbConfig.pool.idle
-  },
-  dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      }
-    },
+  }
 };
 
+// SSL (bases en la nube): activado salvo DB_SSL=false.
 if (dbConfig.ssl) {
   sequelizeOptions.dialectOptions = {
     ssl: {
@@ -50,7 +48,8 @@ db.devolucion = require("./devolucion.model.js")(sequelize, Sequelize);
 db.detalle_devolucion = require("./detalle_devolucion.model.js")(sequelize, Sequelize);
 db.movimiento_inventario = require("./movimiento_inventario.model.js")(sequelize, Sequelize);
 db.auditoria = require("./auditoria.model.js")(sequelize, Sequelize);
-// Aquí iremos agregando: db.producto, db.inventario, etc.
+db.reembolso = require("./reembolso.model.js")(sequelize, Sequelize);
+db.cupon = require("./cupon.model.js")(sequelize, Sequelize);
 db.empleado.belongsTo(db.sucursal, { foreignKey: 'id_sucursal' });
 
 db.sucursal.hasMany(db.empleado, { foreignKey: 'id_sucursal' });
@@ -120,5 +119,21 @@ db.devolucion.hasMany(db.movimiento_inventario, { foreignKey: 'id_devolucion' })
 db.movimiento_inventario.belongsTo(db.devolucion, { foreignKey: 'id_devolucion' });
 db.empleado.hasMany(db.movimiento_inventario, { foreignKey: 'id_empleado' });
 db.movimiento_inventario.belongsTo(db.empleado, { foreignKey: 'id_empleado' });
+
+// 10. Reembolsos de dinero por devoluciones
+db.pedido.hasMany(db.reembolso, { foreignKey: 'id_pedido' });
+db.reembolso.belongsTo(db.pedido, { foreignKey: 'id_pedido' });
+db.devolucion.hasMany(db.reembolso, { foreignKey: 'id_devolucion' });
+db.reembolso.belongsTo(db.devolucion, { foreignKey: 'id_devolucion' });
+db.pago.hasMany(db.reembolso, { foreignKey: 'id_pago' });
+db.reembolso.belongsTo(db.pago, { foreignKey: 'id_pago' });
+db.empleado.hasMany(db.reembolso, { foreignKey: 'id_empleado' });
+db.reembolso.belongsTo(db.empleado, { foreignKey: 'id_empleado' });
+
+// 11. Cupones de descuento
+db.cupon.hasMany(db.pedido, { foreignKey: 'id_cupon' });
+db.pedido.belongsTo(db.cupon, { foreignKey: 'id_cupon' });
+db.sucursal.hasMany(db.cupon, { foreignKey: 'id_sucursal' });
+db.cupon.belongsTo(db.sucursal, { foreignKey: 'id_sucursal' });
 
 module.exports = db;

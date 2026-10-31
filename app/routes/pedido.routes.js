@@ -10,6 +10,7 @@ module.exports = app => {
     router.put("/:id/estado", [verificarToken, deMiSucursal], pedidos.actualizarEstado);
 
     router.get("/:id/historial", [verificarToken, deMiSucursal], pedidos.historial);
+    router.post("/cotizar", [verificarToken, isCajero], pedidos.cotizar);
     router.post("/", [verificarToken, isCajero], pedidos.create);
     router.get("/", verificarToken, pedidos.findAll);
     router.get("/:id", [verificarToken, deMiSucursal], pedidos.findOne);

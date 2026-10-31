@@ -12,6 +12,8 @@ export const obtener = (id) => api(`/api/pedidos/${encodeURIComponent(id)}`);
 export const historial = (id) => api(`/api/pedidos/${encodeURIComponent(id)}/historial`);
 /** Venta de mostrador: { id_cliente, id_sucursal, detalles: [{ id_producto, cantidad }] } */
 export const crear = (body) => api("/api/pedidos", { method: "POST", body });
+/** Total de una venta de mostrador con cupón: { id_sucursal, detalles, cupon } -> { subtotal, descuento, total, iva, cupon, cupon_error } */
+export const cotizar = (body) => api("/api/pedidos/cotizar", { method: "POST", body });
 export const cambiarEstado = (id, estado) => api(`/api/pedidos/${id}/estado`, { method: "PUT", body: { estado } });
 // Líneas de un pedido PENDIENTE (los hooks de DetallePedido recalculan el total).
 export const agregarLinea = (id_pedido, id_producto, cantidad) => api("/api/detalles", { method: "POST", body: { id_pedido, id_producto, cantidad } });

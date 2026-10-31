@@ -67,6 +67,15 @@ exports.create = async (req, res) => {
 
     await pedido.reload({ transaction: t });
 
+    // Con un cupón con compra mínima o un envío que se vuelve gratis, agregar una prenda puede
+    // BAJAR el total: lo ya pagado (o en camino) no puede quedar por encima.
+    const comprometido = await totalComprometido(pedido.id_pedido, t);
+    if (comprometido > Number(pedido.total)) {
+      throw errorHttp(400, `No se puede agregar: el nuevo total sería ${Number(pedido.total).toFixed(2)} y el pedido ya tiene ${comprometido.toFixed(2)} pagado o en proceso de pago.`);
+    }
+    await procesarPedidoSiEstaPagado(pedido.id_pedido, req.empleadoId, t);
+    await pedido.reload({ transaction: t });
+
     await registrarAuditoria({
       id_empleado: req.empleadoId,
       accion: 'DETALLE_PEDIDO_AGREGADO',

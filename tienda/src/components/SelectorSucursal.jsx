@@ -5,7 +5,7 @@ import * as catalogoService from "../services/catalogoService";
 import Select from "./Select";
 
 /** Sucursal desde la que se despacha el pedido: define el stock que se muestra y se descuenta. */
-export default function SelectorSucursal({ className = "pill" }) {
+export default function SelectorSucursal({ className = "pill", etiqueta = "Enviar desde" }) {
   const { id_sucursal, elegirSucursal } = useCart();
   const sucursales = useFetch(() => catalogoService.sucursales(), []);
   const lista = sucursales.data || [];
@@ -18,7 +18,7 @@ export default function SelectorSucursal({ className = "pill" }) {
   if (sucursales.error) return <span className="err sm">{sucursales.error}</span>;
   return (
     <label className="sucursal sm muted">
-      Enviar desde
+      {etiqueta}
       <Select className={className} value={id_sucursal || ""} onChange={(e) => elegirSucursal(e.target.value)}
         options={lista.map((s) => [s.id_sucursal, `${s.nombre}${s.ciudad ? ", " + s.ciudad : ""}`])} />
     </label>

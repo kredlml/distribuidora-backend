@@ -10,11 +10,49 @@ const Op = db.Sequelize.Op;
 const { ESTADOS, validarTransicion, esEstadoFinal } = require("../utils/estadosDevolucion");
 const { registrarAuditoria } = require("../utils/auditoria");
 const { whereSucursal } = require("../utils/alcance");
+const { crearReembolsosDeDevolucion, procesarEnStripe } = require("../utils/reembolsos");
+const notificaciones = require("../utils/notificaciones");
+const { leerPaginacion, pagina, textoBusqueda, idBuscado } = require("../utils/paginacion");
+const { esIdValido } = require("../middlewares/validarId");
+
+// Después de confirmar: los reembolsos a tarjeta se piden a Stripe (procesarEnStripe avisa a la
+// clienta y nunca lanza) y de los de caja se avisa que están listos. Si Stripe no responde, el
+// reembolso queda PENDIENTE y caja puede reintentarlo.
+async function tramitarReembolsos(creados, idEmpleado) {
+  const finales = [];
+  for (const r of creados) {
+    if (r.metodo === "STRIPE") {
+      const final = (await procesarEnStripe(r.id_reembolso, idEmpleado)) || r;
+      finales.push(final);
+      // Si Stripe no lo terminó al momento, la clienta sabe que está en proceso.
+      if (final.estado === "PENDIENTE") notificaciones.reembolsoCreado(r.id_reembolso);
+    } else { finales.push(r); notificaciones.reembolsoCreado(r.id_reembolso); }
+  }
+  return finales;
+}
+const textoReembolsos = (rs) => {
+  if (!rs.length) return "";
+  const q = (n) => `Q${Number(n).toFixed(2)}`;
+  const enCaja = { EFECTIVO: "en efectivo", TARJETA: "con reversión en el POS", PAYPAL: "por PayPal" };
+  return " " + rs.map((r) => r.metodo === "STRIPE"
+    ? (r.estado === "COMPLETADO" ? `Se reembolsaron ${q(r.monto)} a la tarjeta.`
+      : r.estado === "FALLIDO" ? `Stripe rechazó el reembolso de ${q(r.monto)}: entrégalo en efectivo.`
+      : `Reembolso de ${q(r.monto)} a la tarjeta pendiente en Stripe.`)
+    : `Entregar ${q(r.monto)} a la clienta ${enCaja[r.metodo] || ""}.`).join(" ");
+};
+
+// Tras el commit nada debe hacer rollback ni responder 500: la devolución ya quedó guardada.
+async function responderTrasConfirmar(res, devolucion, mensaje, creados, idEmpleado) {
+  let reembolsos = creados;
+  try { reembolsos = await tramitarReembolsos(creados, idEmpleado); }
+  catch (e) { console.warn(`[devoluciones] ${e.message}`); }
+  res.status(200).send({ message: `${mensaje}${textoReembolsos(reembolsos)}`, devolucion, reembolsos });
+  notificaciones.devolucionActualizada(devolucion.id_devolucion);
+}
 
 // Política de cambios y devoluciones: UNA sola solicitud por pedido (aunque la rechacen), y solo
 // dentro de las HORAS_PLAZO horas siguientes a la entrega (Pedido.fecha_entrega).
-const HORAS_PLAZO = Number(process.env.HORAS_PLAZO_DEVOLUCION) > 0 ? Number(process.env.HORAS_PLAZO_DEVOLUCION) : 24;
-const venceEl = (pedido) => (pedido.fecha_entrega ? new Date(new Date(pedido.fecha_entrega).getTime() + HORAS_PLAZO * 3600 * 1000) : null);
+const { HORAS_PLAZO_DEVOLUCION: HORAS_PLAZO, venceDevolucion: venceEl } = require("../utils/plazos");
 
 // Revisa si el pedido admite hoy una solicitud. Devuelve { permite, motivo, mensaje, vence }.
 async function politicaDevolucion(pedido, t) {
@@ -92,6 +130,22 @@ async function reingresarAInventario({ id_producto, id_sucursal, cantidad, estad
   return fila;
 }
 
+// Detalles ordenados por producto (orden de bloqueo estable).
+const porProducto = (detalles) => [...(detalles || [])].sort((a, b) => a.id_producto - b.id_producto || a.id_detalle_devolucion - b.id_detalle_devolucion);
+
+// Bloquea de una vez todas las filas de Inventario de esos productos en la sucursal, en orden
+// id_producto, id_inventario: el mismo orden en que las ventas (facturacion.js) bloquean sus lotes.
+async function bloquearInventario(ids, id_sucursal, t) {
+  const unicos = [...new Set(ids.map(Number))];
+  if (!unicos.length) return;
+  await Inventario.findAll({
+    where: { id_producto: unicos, id_sucursal },
+    order: [['id_producto', 'ASC'], ['id_inventario', 'ASC']],
+    transaction: t,
+    lock: t.LOCK.UPDATE
+  });
+}
+
 // Descuenta cantidad de las unidades DISPONIBLES de un producto en una sucursal,
 // usando el mismo criterio FIFO (por orden de ingreso) que el motor de ventas existente.
 async function descontarDisponible({ id_producto, id_sucursal, cantidad }, t) {
@@ -122,6 +176,15 @@ async function descontarDisponible({ id_producto, id_sucursal, cantidad }, t) {
 }
 
 exports.politicaDevolucion = politicaDevolucion;
+
+// Bloquea la devolución (dos empleados que la procesan a la vez se ordenan y el segundo ve el
+// estado nuevo) y luego carga sus relaciones. Postgres no admite FOR UPDATE con los LEFT JOIN de
+// los include, por eso son dos consultas.
+async function devolucionBloqueada(id, t, include = []) {
+  const fila = await Devolucion.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
+  if (!fila || !include.length) return fila;
+  return Devolucion.findByPk(id, { include, transaction: t });
+}
 
 // POST /api/devoluciones — el cliente (o quien tome el pedido en tienda) registra la solicitud.
 exports.create = async (req, res) => {
@@ -175,6 +238,7 @@ exports.create = async (req, res) => {
         );
       }
 
+      let precioNuevo = null;
       if ((tipo === 'CAMBIO_TALLA' || tipo === 'CAMBIO_VARIANTE')) {
         if (!det.id_producto_nuevo) {
           throw new Error("Para un cambio de talla/variante debe indicarse id_producto_nuevo en cada detalle.");
@@ -195,6 +259,14 @@ exports.create = async (req, res) => {
             `El producto nuevo ${det.id_producto_nuevo} no es una variante del producto original ${detallePedido.id_producto} (deben pertenecer al mismo grupo de variantes).`
           );
         }
+        // Los cambios nunca cobran diferencia: la variante nueva debe costar igual o menos que lo
+        // pagado (si cuesta menos, la diferencia se reembolsa al completar el cambio).
+        if (Number(productoNuevo.precio_unitario) > Number(detallePedido.precio_unitario)) {
+          throw new Error(
+            `La variante nueva cuesta Q${Number(productoNuevo.precio_unitario).toFixed(2)}, más de lo que pagaste (Q${Number(detallePedido.precio_unitario).toFixed(2)}). Elige una de igual o menor precio, o solicita una devolución.`
+          );
+        }
+        precioNuevo = productoNuevo.precio_unitario;
       }
 
       const detalleDevolucion = await DetalleDevolucion.create({
@@ -203,6 +275,7 @@ exports.create = async (req, res) => {
         id_producto: detallePedido.id_producto,
         cantidad: det.cantidad,
         id_producto_nuevo: det.id_producto_nuevo || null,
+        precio_unitario_nuevo: precioNuevo,
         resultado_revision: 'PENDIENTE'
       }, { transaction: t });
 
@@ -223,6 +296,7 @@ exports.create = async (req, res) => {
 
     await t.commit();
     res.status(201).send({ message: "Solicitud de devolución/cambio registrada.", devolucion: nuevaDevolucion });
+    notificaciones.devolucionActualizada(nuevaDevolucion.id_devolucion);
   } catch (error) {
     await t.rollback();
     res.status(400).send({ message: error.message });
@@ -234,6 +308,18 @@ exports.create = async (req, res) => {
 exports.findAll = async (req, res) => {
   try {
     const { estado, tipo, motivo, id_pedido, id_cliente, desde, hasta } = req.query;
+    // Filtros inválidos: 400 claro (no un 500 con el error interno de Postgres).
+    const enLista = (v, attr) => !v || (Devolucion.rawAttributes[attr].values || []).includes(v);
+    if (!enLista(estado, 'estado') || !enLista(tipo, 'tipo') || !enLista(motivo, 'motivo')) {
+      return res.status(400).send({ message: "Filtro inválido (estado, tipo o motivo)." });
+    }
+    if ((id_pedido && !esIdValido(id_pedido)) || (id_cliente && !esIdValido(id_cliente))) {
+      return res.status(400).send({ message: "id_pedido e id_cliente deben ser números válidos." });
+    }
+    const esDia = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(`${s}T00:00:00Z`).getTime()) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+    if ((desde && !esDia(desde)) || (hasta && !esDia(hasta))) {
+      return res.status(400).send({ message: "Las fechas desde/hasta deben tener el formato AAAA-MM-DD." });
+    }
     const where = {};
     if (estado) where.estado = estado;
     if (tipo) where.tipo = tipo;
@@ -246,9 +332,19 @@ exports.findAll = async (req, res) => {
       if (hasta) where.fecha_solicitud[Op.lte] = new Date(`${hasta}T23:59:59.999`);
     }
 
+    // ?q= busca por número de devolución o de pedido, o por nombre de la clienta.
+    const pag = leerPaginacion(req.query);
+    const like = textoBusqueda(req.query.q), idq = idBuscado(req.query.q);
+    if (like) {
+      where[Op.and] = [{ [Op.or]: [
+        ...(idq ? [{ id_devolucion: idq }, { id_pedido: idq }] : []),
+        db.sequelize.where(db.sequelize.fn('concat_ws', ' ', db.sequelize.col('Cliente.nombre'), db.sequelize.col('Cliente.apellido')), { [Op.iLike]: like })
+      ] }];
+    }
+
     // Solo devoluciones de pedidos de la propia sucursal (el DISTRITAL, todas).
     const alcance = req.empleado ? whereSucursal(req) : {};
-    const data = await Devolucion.findAll({
+    const consulta = {
       where,
       include: [
         { model: db.cliente, attributes: ['id_cliente', 'nombre', 'apellido'] },
@@ -256,10 +352,14 @@ exports.findAll = async (req, res) => {
         ...(Object.keys(alcance).length ? [{ model: Pedido, attributes: [], where: alcance }] : [])
       ],
       order: [['id_devolucion', 'DESC']]
-    });
-    res.send(data);
+    };
+    if (pag) {
+      const { rows, count } = await Devolucion.findAndCountAll({ ...consulta, limit: pag.limit, offset: pag.offset, distinct: true });
+      return res.send(pagina(rows, count, pag));
+    }
+    res.send(await Devolucion.findAll(consulta));
   } catch (error) {
-    res.status(500).send({ message: error.message || "Error al recuperar las devoluciones." });
+    res.status(error.status || 500).send({ message: error.message || "Error al recuperar las devoluciones." });
   }
 };
 
@@ -276,7 +376,8 @@ exports.findOne = async (req, res) => {
             { model: Producto, attributes: ['nombre', 'talla', 'color'] },
             { model: Producto, as: 'ProductoNuevo', attributes: ['nombre', 'talla', 'color'] }
           ]
-        }
+        },
+        { model: db.reembolso, attributes: ['id_reembolso', 'metodo', 'monto', 'estado', 'fecha_creacion', 'fecha_completado'] }
       ]
     });
 
@@ -406,7 +507,7 @@ function obtenerObservacion(req) {
 async function transicionSimple(req, res, estadoNuevo) {
   const t = await db.sequelize.transaction();
   try {
-    const devolucion = await Devolucion.findByPk(req.params.id, { transaction: t });
+    const devolucion = await devolucionBloqueada(req.params.id, t);
     if (!devolucion) {
       throw new Error(`No se encontró la devolución con id=${req.params.id}.`);
     }
@@ -434,6 +535,7 @@ async function transicionSimple(req, res, estadoNuevo) {
 
     await t.commit();
     res.status(200).send({ message: `Devolución actualizada a ${estadoNuevo}.`, estado_anterior: estadoAnterior, devolucion });
+    notificaciones.devolucionActualizada(devolucion.id_devolucion);
   } catch (error) {
     await t.rollback();
     res.status(400).send({ message: error.message });
@@ -450,10 +552,7 @@ exports.rechazar = (req, res) => transicionSimple(req, res, ESTADOS.RECHAZADA);
 exports.recibir = async (req, res) => {
   const t = await db.sequelize.transaction();
   try {
-    const devolucion = await Devolucion.findByPk(req.params.id, {
-      include: [{ model: DetalleDevolucion }],
-      transaction: t
-    });
+    const devolucion = await devolucionBloqueada(req.params.id, t, [{ model: DetalleDevolucion }]);
     if (!devolucion) throw new Error(`No se encontró la devolución con id=${req.params.id}.`);
     if (!validarTransicion(devolucion.estado, ESTADOS.RECIBIDA)) {
       throw new Error(`Transición inválida: no se puede pasar de ${devolucion.estado} a ${ESTADOS.RECIBIDA}.`);
@@ -491,6 +590,7 @@ exports.recibir = async (req, res) => {
 
     await t.commit();
     res.status(200).send({ message: "Devolución marcada como recibida.", devolucion });
+    notificaciones.devolucionActualizada(devolucion.id_devolucion);
   } catch (error) {
     await t.rollback();
     res.status(400).send({ message: error.message });
@@ -508,10 +608,7 @@ exports.revisar = async (req, res) => {
       throw new Error("Debe indicarse 'aceptar' (boolean) y el resultado de revisión de cada detalle.");
     }
 
-    const devolucion = await Devolucion.findByPk(req.params.id, {
-      include: [{ model: DetalleDevolucion }],
-      transaction: t
-    });
+    const devolucion = await devolucionBloqueada(req.params.id, t, [{ model: DetalleDevolucion }]);
     if (!devolucion) throw new Error(`No se encontró la devolución con id=${req.params.id}.`);
     if (!validarTransicion(devolucion.estado, ESTADOS.EN_REVISION)) {
       throw new Error(`Transición inválida: no se puede pasar de ${devolucion.estado} a ${ESTADOS.EN_REVISION}.`);
@@ -581,6 +678,7 @@ exports.revisar = async (req, res) => {
 
     await t.commit();
     res.status(200).send({ message: `Revisión completada. Devolución en estado ${estadoFinal}.`, devolucion });
+    notificaciones.devolucionActualizada(devolucion.id_devolucion);
   } catch (error) {
     await t.rollback();
     res.status(400).send({ message: error.message });
@@ -590,11 +688,9 @@ exports.revisar = async (req, res) => {
 // PUT /api/devoluciones/:id/reintegrar — solo para tipo=DEVOLUCION, estado ACEPTADA.
 exports.reintegrar = async (req, res) => {
   const t = await db.sequelize.transaction();
+  let confirmado = false;
   try {
-    const devolucion = await Devolucion.findByPk(req.params.id, {
-      include: [{ model: DetalleDevolucion }, { model: Pedido }],
-      transaction: t
-    });
+    const devolucion = await devolucionBloqueada(req.params.id, t, [{ model: DetalleDevolucion }, { model: Pedido }]);
     if (!devolucion) throw new Error(`No se encontró la devolución con id=${req.params.id}.`);
     if (devolucion.tipo !== 'DEVOLUCION') {
       throw new Error("Esta operación solo aplica a devoluciones de tipo DEVOLUCION (use /cambiar para cambios de talla/variante).");
@@ -604,8 +700,10 @@ exports.reintegrar = async (req, res) => {
     }
 
     const id_sucursal = devolucion.Pedido.id_sucursal;
+    const detalles = porProducto(devolucion.DetalleDevolucions);
+    await bloquearInventario(detalles.map(d => d.id_producto), id_sucursal, t);
 
-    for (const detalle of devolucion.DetalleDevolucions) {
+    for (const detalle of detalles) {
       if (detalle.resultado_revision === 'PENDIENTE') {
         throw new Error(`El detalle ${detalle.id_detalle_devolucion} aún no tiene resultado de revisión.`);
       }
@@ -650,10 +748,15 @@ exports.reintegrar = async (req, res) => {
       detalles: `Devolución #${devolucion.id_devolucion} reintegrada al inventario de la sucursal ${id_sucursal}.`
     }, t);
 
+    // El dinero de las prendas devueltas: a la tarjeta en línea (Stripe) y/o pendiente en caja.
+    const creados = await crearReembolsosDeDevolucion({ devolucion, pedido: devolucion.Pedido, id_empleado: req.empleadoId }, t);
+
     await t.commit();
-    res.status(200).send({ message: "Devolución reintegrada al inventario.", devolucion });
+    confirmado = true;
+    await responderTrasConfirmar(res, devolucion, "Devolución reintegrada al inventario.", creados, req.empleadoId);
   } catch (error) {
-    await t.rollback();
+    if (confirmado) return console.warn(`[devoluciones] Tras reintegrar #${req.params.id}: ${error.message}`);
+    await t.rollback().catch(() => {});
     res.status(400).send({ message: error.message });
   }
 };
@@ -661,11 +764,9 @@ exports.reintegrar = async (req, res) => {
 // PUT /api/devoluciones/:id/cambiar — solo para tipo=CAMBIO_TALLA / CAMBIO_VARIANTE, estado ACEPTADA.
 exports.cambiar = async (req, res) => {
   const t = await db.sequelize.transaction();
+  let confirmado = false;
   try {
-    const devolucion = await Devolucion.findByPk(req.params.id, {
-      include: [{ model: DetalleDevolucion }, { model: Pedido }],
-      transaction: t
-    });
+    const devolucion = await devolucionBloqueada(req.params.id, t, [{ model: DetalleDevolucion }, { model: Pedido }]);
     if (!devolucion) throw new Error(`No se encontró la devolución con id=${req.params.id}.`);
     if (!['CAMBIO_TALLA', 'CAMBIO_VARIANTE'].includes(devolucion.tipo)) {
       throw new Error("Esta operación solo aplica a devoluciones de tipo CAMBIO_TALLA o CAMBIO_VARIANTE.");
@@ -675,10 +776,14 @@ exports.cambiar = async (req, res) => {
     }
 
     const id_sucursal = devolucion.Pedido.id_sucursal;
+    const detalles = porProducto(devolucion.DetalleDevolucions);
+    // Todas las filas que se tocarán (prendas devueltas y variantes nuevas) se bloquean primero, en
+    // el mismo orden que las ventas: así la validación de stock es firme y no hay deadlocks.
+    await bloquearInventario(detalles.flatMap(d => [d.id_producto, d.id_producto_nuevo]).filter(Boolean), id_sucursal, t);
 
     // 1) Validar disponibilidad de TODAS las variantes nuevas antes de mover cualquier stock,
     //    para no dejar el inventario a medio actualizar si una variante no alcanza.
-    for (const detalle of devolucion.DetalleDevolucions) {
+    for (const detalle of detalles) {
       if (!detalle.id_producto_nuevo) {
         throw new Error(`El detalle ${detalle.id_detalle_devolucion} no tiene producto nuevo asignado.`);
       }
@@ -692,7 +797,7 @@ exports.cambiar = async (req, res) => {
     }
 
     // 2) Ejecutar el cambio: sale la prenda vieja (según su condición) y entra la nueva variante.
-    for (const detalle of devolucion.DetalleDevolucions) {
+    for (const detalle of detalles) {
       const estadoInventarioVieja = detalle.resultado_revision === 'BUEN_ESTADO'
         ? 'DISPONIBLE'
         : detalle.resultado_revision === 'DANADO' ? 'DANADA' : 'DEFECTUOSA';
@@ -749,10 +854,15 @@ exports.cambiar = async (req, res) => {
       detalles: `Devolución #${devolucion.id_devolucion} procesada como cambio de variante en la sucursal ${id_sucursal}.`
     }, t);
 
+    // Si la variante nueva cuesta menos, se devuelve la diferencia.
+    const creados = await crearReembolsosDeDevolucion({ devolucion, pedido: devolucion.Pedido, id_empleado: req.empleadoId }, t);
+
     await t.commit();
-    res.status(200).send({ message: "Cambio de variante procesado correctamente.", devolucion });
+    confirmado = true;
+    await responderTrasConfirmar(res, devolucion, "Cambio de variante procesado correctamente.", creados, req.empleadoId);
   } catch (error) {
-    await t.rollback();
+    if (confirmado) return console.warn(`[devoluciones] Tras cambiar #${req.params.id}: ${error.message}`);
+    await t.rollback().catch(() => {});
     res.status(400).send({ message: error.message });
   }
 };

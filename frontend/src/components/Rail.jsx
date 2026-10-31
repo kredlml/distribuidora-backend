@@ -28,6 +28,8 @@ export default function Rail() {
   if (PERMISOS.proveedores.includes(rol)) enlaces.push(["/proveedores", "Proveedores", "truck", pathname === "/proveedores"]);
   if (PERMISOS.empleados.includes(rol)) enlaces.push(["/empleados", "Empleados", "users", pathname === "/empleados"]);
   if (PERMISOS.reportes.includes(rol)) enlaces.push(["/reportes", "Reportes de ventas", "chart", pathname === "/reportes"]);
+  if (PERMISOS.promociones.includes(rol)) enlaces.push(["/promociones", "Promociones", "percent", pathname === "/promociones"]);
+  if (PERMISOS.sistema.includes(rol)) enlaces.push(["/sistema", "Estado del sistema", "pulse", pathname === "/sistema"]);
 
   return (
     <nav id="rail" aria-label="Navegación principal">

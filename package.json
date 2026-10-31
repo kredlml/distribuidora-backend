@@ -16,7 +16,13 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node tests/correr.js",
+    "test:navegador": "node tests/correr.js --navegador",
+    "test:todo": "node tests/correr.js --todo",
+    "migrar": "node scripts/migrar.js aplicar",
+    "migrar:estado": "node scripts/migrar.js estado",
+    "respaldo": "node scripts/respaldo.js",
+    "restaurar": "node scripts/restaurar.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -25,9 +31,14 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "10.1.0",
     "pg": "^8.22.0",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.8",
-    "stripe": "^22.6.0"
+    "stripe": "^22.6.0",
+    "umzug": "3.8.3"
+  },
+  "devDependencies": {
+    "playwright-core": "1.63.0"
   }
 }

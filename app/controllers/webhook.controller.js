@@ -3,6 +3,7 @@ const db = require("../models");
 const Pago = db.pago;
 const { registrarAuditoria } = require("../utils/auditoria");
 const { registrarCobroExitoso } = require("../utils/facturacion");
+const { procesarEnStripe } = require("../utils/reembolsos");
 
 exports.stripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -17,6 +18,21 @@ exports.stripeWebhook = async (req, res) => {
   } catch (err) {
     console.error("Error de firma del Webhook:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Reembolsos: Stripe avisa cuando uno que quedó "pending" se completa o falla. Se busca por su
+  // id (re_…) o por metadata.id_reembolso y se vuelve a consultar en Stripe (fuente de verdad).
+  if (['refund.updated', 'refund.failed', 'charge.refund.updated', 'refund.created'].includes(event.type)) {
+    const re = event.data.object;
+    try {
+      const idLocal = re.metadata && /^\d+$/.test(String(re.metadata.id_reembolso || "")) ? Number(re.metadata.id_reembolso) : null;
+      const r = await db.reembolso.findOne({ where: idLocal ? { id_reembolso: idLocal } : { id_transaccion_externa: re.id } });
+      if (r && r.metodo === 'STRIPE' && r.estado === 'PENDIENTE') await procesarEnStripe(r.id_reembolso, null);
+    } catch (error) {
+      console.error("Webhook de reembolso:", error.message);
+      return res.status(500).send();
+    }
+    return res.status(200).send();
   }
 
   const EVENTOS = ['payment_intent.succeeded', 'payment_intent.payment_failed', 'payment_intent.canceled'];

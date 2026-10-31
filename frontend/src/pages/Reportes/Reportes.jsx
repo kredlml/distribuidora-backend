@@ -96,6 +96,10 @@ export default function Reportes() {
               <Kpi titulo="Cancelados" valor={k.cancelados} nota="en el periodo" />
               <Kpi titulo="Devoluciones" valor={k.devoluciones.devoluciones} nota="solicitadas en el periodo" />
               <Kpi titulo="Cambios" valor={k.devoluciones.cambios} nota="de talla o color" />
+              <Kpi titulo="Reembolsado" valor={dinero(k.reembolsos.monto)} nota={`${k.reembolsos.cantidad} reembolso${k.reembolsos.cantidad === 1 ? "" : "s"} · ventas netas ${dinero(k.ventas_netas)}`} />
+              <Kpi titulo="Descuentos (cupones)" valor={dinero(k.descuentos)} nota="sobre las ventas del periodo" />
+              <Kpi titulo="Envíos cobrados" valor={dinero(k.envios)} nota="incluidos en las ventas" />
+              <Kpi titulo={`IVA (${k.iva_porcentaje}%)`} valor={dinero(k.iva)} nota={`incluido; ventas sin IVA ${dinero(k.ventas_sin_iva)}`} />
             </section>
 
             {distrital && !idSucursal && r.por_sucursal.length > 0 && (
@@ -170,6 +174,14 @@ export default function Reportes() {
                 {r.por_origen.length ? r.por_origen.map((o) => (
                   <div className="fila-total" key={o.origen}><span>{NOMBRE_ORIGEN[o.origen] || o.origen} <span className="muted sm">({o.pedidos})</span></span><span>{dinero(o.ventas)}</span></div>
                 )) : <p className="muted">Sin ventas en el periodo.</p>}
+                {(r.por_cupon || []).length > 0 && (
+                  <>
+                    <h2 className="sec">Ventas con cupón</h2>
+                    {r.por_cupon.map((c) => (
+                      <div className="fila-total" key={c.codigo}><span>{c.codigo} <span className="muted sm">({c.pedidos}, −{dinero(c.descuento)})</span></span><span>{dinero(c.ventas)}</span></div>
+                    ))}
+                  </>
+                )}
               </section>
               <section className="card">
                 <h2>Ventas por vendedor (mostrador)</h2>

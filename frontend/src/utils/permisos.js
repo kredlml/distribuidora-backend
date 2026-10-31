@@ -21,6 +21,10 @@ export const PERMISOS = {
   proveedores: [...GERENTES, "BODEGUERO"], eliminarProveedor: GERENTES,
   // Ver todas las sucursales (filtros por sucursal, reportes globales).
   todasLasSucursales: ["DISTRITAL"],
+  // Estado del sistema: salud de la base, migraciones y errores del servidor.
+  sistema: ["DISTRITAL"],
+  // Promociones (cupones de descuento): las define el distrital para todas las sucursales.
+  promociones: ["DISTRITAL"],
 };
 
 export const ROLES = ["DISTRITAL", "ADMIN", "CAJERO", "BODEGUERO"];

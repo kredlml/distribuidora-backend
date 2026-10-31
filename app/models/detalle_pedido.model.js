@@ -1,16 +1,9 @@
 module.exports = (sequelize, Sequelize) => {
-  // Recalcula el total del Pedido sumando el subtotal de todos sus detalles
+  // Recalcula el total del Pedido: suma de líneas, menos el descuento de su cupón (que se vuelve a
+  // calcular: un porcentaje cambia si cambian las líneas), más el envío.
   const actualizarTotalPedido = async (detalle, options) => {
-    const Pedido = sequelize.models.Pedido;
-    const totalActual = await DetallePedido.sum('subtotal', {
-      where: { id_pedido: detalle.id_pedido },
-      transaction: options.transaction
-    });
-
-    await Pedido.update(
-      { total: totalActual || 0 },
-      { where: { id_pedido: detalle.id_pedido }, transaction: options.transaction }
-    );
+    const { recalcularPedido } = require("../utils/totales");
+    await recalcularPedido(sequelize, detalle.id_pedido, options.transaction);
   };
 
   // El subtotal nunca se confía al cliente: siempre es cantidad × precio_unitario.

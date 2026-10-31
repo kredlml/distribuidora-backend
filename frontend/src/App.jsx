@@ -14,6 +14,8 @@ import Empleados from "./pages/Empleados/Empleados";
 import Inventario from "./pages/Inventario/Inventario";
 import Login from "./pages/Login/Login";
 import NuevaSolicitud from "./pages/NuevaSolicitud/NuevaSolicitud";
+import Promociones from "./pages/Promociones/Promociones";
+import Sistema from "./pages/Sistema/Sistema";
 import Sucursales from "./pages/Sucursales/Sucursales";
 import Trazabilidad from "./pages/Trazabilidad/Trazabilidad";
 import { PERMISOS } from "./utils/permisos";
@@ -47,6 +49,12 @@ export default function App() {
         } />
         <Route path="sucursales" element={
           <RoleRoute roles={PERMISOS.sucursales} mensaje="Esta sección es solo para ADMIN o BODEGUERO."><Sucursales /></RoleRoute>
+        } />
+        <Route path="promociones" element={
+          <RoleRoute roles={PERMISOS.promociones} mensaje="Las promociones son solo para el gerente distrital."><Promociones /></RoleRoute>
+        } />
+        <Route path="sistema" element={
+          <RoleRoute roles={PERMISOS.sistema} mensaje="El estado del sistema es solo para el gerente distrital."><Sistema /></RoleRoute>
         } />
         <Route path="empleados" element={
           <RoleRoute roles={PERMISOS.empleados} mensaje="Esta sección es solo para administradores."><Empleados /></RoleRoute>

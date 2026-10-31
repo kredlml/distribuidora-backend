@@ -3,3 +3,11 @@ package-lock.json
 .env
 .env.development
 .env.production
+
+# Pruebas: base desechable y salidas (logs, capturas, PDFs)
+tests/.pgdata/
+tests/salidas/
+
+# Respaldos de la base (npm run respaldo) y correos guardados en modo archivo
+respaldos/
+correos/

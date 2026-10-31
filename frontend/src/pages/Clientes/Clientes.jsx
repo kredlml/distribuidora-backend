@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ChipBar } from "../../components/Chip";
 import { Cargando, ErrorCard } from "../../components/Estado";
+import Paginador from "../../components/Paginador";
 import SearchBox from "../../components/SearchBox";
+import useDebounced, { useCorregirPagina } from "../../hooks/useDebounced";
 import useFetch from "../../hooks/useFetch";
 import * as clientesService from "../../services/clientesService";
 import * as sucursalesService from "../../services/sucursalesService";
@@ -11,20 +13,21 @@ import CodigoWebDialog from "./CodigoWebDialog";
 import "./Clientes.css";
 
 const FILTROS = [["", "Activos"], ["web", "Con cuenta web"], ["mostrador", "Solo mostrador"], ["inactivos", "Desactivados"]];
-const pasa = (c, f) => (f === "inactivos" ? c.activo === false
-  : c.activo !== false && (f === "web" ? c.tiene_cuenta_web : f === "mostrador" ? !c.tiene_cuenta_web : true));
 
 export default function Clientes() {
-  const [filtro, setFiltro] = useState("");
-  const [q, setQ] = useState("");
+  const [filtro, setFiltroEstado] = useState("");
+  const [q, setQEstado] = useState("");
+  const [pagina, setPagina] = useState(1);
+  // Cambiar el filtro o la búsqueda vuelve a la primera página.
+  const setFiltro = (v) => { setFiltroEstado(v); setPagina(1); };
+  const setQ = (v) => { setQEstado(v); setPagina(1); };
   const [dialogo, setDialogo] = useState(null); // { tipo: "nuevo" | "editar" | "codigo", cliente }
-  const { data, error, loading, reload } = useFetch(() => clientesService.listar(), []);
+  const qBuscar = useDebounced(q.trim());
+  const { data, error, loading, reload } = useFetch(() => clientesService.listarPagina({ q: qBuscar, filtro, pagina }), [qBuscar, filtro, pagina]);
   const sucs = useFetch(() => sucursalesService.listar(), []);
 
-  const texto = q.trim().toLowerCase();
-  const lista = (data || []).filter((c) => pasa(c, filtro))
-    .filter((c) => !texto || `${c.nombre} ${c.apellido} ${c.email || ""} ${c.telefono || ""} #${c.id_cliente}`.toLowerCase().includes(texto))
-    .sort((a, b) => b.id_cliente - a.id_cliente);
+  useCorregirPagina(data, setPagina);
+  const lista = (data && data.datos) || [];
   const cerrar = () => setDialogo(null);
   const hecho = () => { cerrar(); reload(); };
 
@@ -41,7 +44,7 @@ export default function Clientes() {
           : error ? <ErrorCard message={error} onRetry={reload} />
           : (
             <section className="card">
-              <h2>{lista.length} cliente{lista.length === 1 ? "" : "s"}</h2>
+              <h2>{data.total} cliente{data.total === 1 ? "" : "s"}</h2>
               {lista.length ? lista.map((c) => (
                 <div className="item" key={c.id_cliente}>
                   <div>
@@ -57,6 +60,7 @@ export default function Clientes() {
                   </div>
                 </div>
               )) : <p className="muted">No hay clientes con estos filtros.</p>}
+              <Paginador datos={data} nombre="clientes" onPagina={setPagina} />
             </section>
           )}
       </div>

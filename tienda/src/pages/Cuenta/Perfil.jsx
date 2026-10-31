@@ -31,6 +31,31 @@ export default function Perfil() {
         <div className="err" role="alert">{error}</div>
         <div><button className="btn pri" disabled={enviando}>Guardar cambios</button></div>
       </form>
+      <CambiarPassword />
     </section>
+  );
+}
+
+function CambiarPassword() {
+  const { renovarToken } = useAuth();
+  const aviso = useToast();
+  const { error, enviando, onSubmit } = useSubmit(async (fd, form) => {
+    if (fd.get("nueva") !== fd.get("nueva2")) throw new Error("Las contraseñas nuevas no coinciden.");
+    const r = await authService.cambiarPassword(fd.get("actual"), fd.get("nueva"));
+    renovarToken(r.token);
+    form.reset();
+    aviso(r.message);
+  });
+  return (
+    <form className="stack sec" onSubmit={onSubmit}>
+      <h2>Cambiar contraseña</h2>
+      <label className="sm muted">Contraseña actual<input className="field" type="password" name="actual" autoComplete="current-password" required /></label>
+      <div className="grid2">
+        <label className="sm muted">Nueva<input className="field" type="password" name="nueva" minLength={8} autoComplete="new-password" required /></label>
+        <label className="sm muted">Repite la nueva<input className="field" type="password" name="nueva2" minLength={8} autoComplete="new-password" required /></label>
+      </div>
+      <div className="err" role="alert">{error}</div>
+      <div><button className="btn" disabled={enviando}>{enviando ? "Guardando…" : "Cambiar contraseña"}</button></div>
+    </form>
   );
 }

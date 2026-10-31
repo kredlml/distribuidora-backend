@@ -1,11 +1,14 @@
 const db = require("../models");
 const sequelize = db.sequelize; // Usaremos la instancia directa para lanzar SQL puro
 const { sucursalDe } = require("../utils/alcance");
+const { IVA_PORCENTAJE } = require("../utils/precios");
 
 // Zona horaria del negocio: los "días" de los reportes son días de Guatemala, no del servidor.
 const ZONA = process.env.ZONA_HORARIA_NOMBRE || "America/Guatemala";
 // Estados que cuentan como venta: el pedido ya se pagó (PENDIENTE y CANCELADO no son ventas).
 const ESTADOS_VENTA = "('PROCESADO','ENVIADO','ENTREGADO')";
+// Lo vendido por una línea después del descuento del cupón (prorrateado entre las líneas del pedido).
+const LINEA_NETA = `d.subtotal * (1 - p.descuento / NULLIF((SELECT SUM(d2.subtotal) FROM "DetallePedido" d2 WHERE d2.id_pedido = p.id_pedido), 0))`;
 const esFecha = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
 const num = (v) => Math.round(Number(v || 0) * 100) / 100;
 
@@ -95,6 +98,7 @@ exports.resumen = async (req, res) => {
 
     const [kpi] = await q(`
       SELECT COUNT(*)::int AS pedidos, COALESCE(SUM(p.total),0) AS ventas,
+        COALESCE(SUM(p.descuento),0) AS descuentos, COALESCE(SUM(p.costo_envio),0) AS envios,
         COALESCE((SELECT SUM(d.cantidad) FROM "DetallePedido" d JOIN "Pedido" p ON p.id_pedido = d.id_pedido WHERE ${ventasPeriodo}),0)::int AS unidades
       FROM "Pedido" p WHERE ${ventasPeriodo}`);
     const [deHoy] = await q(`
@@ -123,13 +127,13 @@ exports.resumen = async (req, res) => {
       FROM "Pedido" p WHERE ${ventasPeriodo} GROUP BY 1 ORDER BY 1`);
     const porPrenda = await q(`
       SELECT pr.id_producto, pr.nombre, pr.talla, pr.color, c.nombre AS tipo,
-        SUM(d.cantidad)::int AS unidades, COALESCE(SUM(d.subtotal),0) AS ventas
+        SUM(d.cantidad)::int AS unidades, COALESCE(SUM(${LINEA_NETA}),0) AS ventas
       FROM "DetallePedido" d JOIN "Pedido" p ON p.id_pedido = d.id_pedido
       JOIN "Producto" pr ON pr.id_producto = d.id_producto LEFT JOIN "Categoria" c ON c.id_categoria = pr.id_categoria
       WHERE ${ventasPeriodo}
       GROUP BY pr.id_producto, pr.nombre, pr.talla, pr.color, c.nombre ORDER BY unidades DESC, ventas DESC`);
     const porTipo = await q(`
-      SELECT COALESCE(c.nombre, 'Sin tipo') AS tipo, SUM(d.cantidad)::int AS unidades, COALESCE(SUM(d.subtotal),0) AS ventas
+      SELECT COALESCE(c.nombre, 'Sin tipo') AS tipo, SUM(d.cantidad)::int AS unidades, COALESCE(SUM(${LINEA_NETA}),0) AS ventas
       FROM "DetallePedido" d JOIN "Pedido" p ON p.id_pedido = d.id_pedido
       JOIN "Producto" pr ON pr.id_producto = d.id_producto LEFT JOIN "Categoria" c ON c.id_categoria = pr.id_categoria
       WHERE ${ventasPeriodo} GROUP BY 1 ORDER BY ventas DESC`);
@@ -153,6 +157,17 @@ exports.resumen = async (req, res) => {
       GROUP BY pr.id_producto, pr.nombre, pr.talla, pr.color, s.id_sucursal, s.nombre, pr.stock_minimo
       HAVING SUM(inv.cantidad) <= pr.stock_minimo ORDER BY stock ASC, pr.nombre`);
 
+    // Dinero devuelto a clientas (reembolsos entregados en el periodo) y ventas por cupón.
+    const [reembolsos] = await q(`
+      SELECT COUNT(*)::int AS cantidad, COALESCE(SUM(r.monto),0) AS monto
+      FROM "Reembolso" r JOIN "Pedido" p ON p.id_pedido = r.id_pedido
+      WHERE r.estado = 'COMPLETADO' AND r.id_devolucion IS NOT NULL AND (r.fecha_completado AT TIME ZONE :zona)::date BETWEEN :desde AND :hasta ${suc.sql}`);
+    const porCupon = await q(`
+      SELECT cu.codigo, cu.descripcion, COUNT(*)::int AS pedidos, COALESCE(SUM(p.descuento),0) AS descuento, COALESCE(SUM(p.total),0) AS ventas
+      FROM "Pedido" p JOIN "Cupon" cu ON cu.id_cupon = p.id_cupon
+      WHERE ${ventasPeriodo} GROUP BY cu.codigo, cu.descripcion ORDER BY descuento DESC`);
+    const iva = num(Number(kpi.ventas) - Number(kpi.ventas) / (1 + IVA_PORCENTAJE / 100));
+
     const sucursal = suc.id ? await db.sucursal.findByPk(suc.id, { attributes: ["id_sucursal", "nombre", "ciudad"] }) : null;
     const dev = Object.fromEntries(devoluciones.map((d) => [d.tipo, d.n]));
     const conDinero = (filas, campos) => filas.map((f) => ({ ...f, ...Object.fromEntries(campos.map((c) => [c, num(f[c])])) }));
@@ -167,8 +182,14 @@ exports.resumen = async (req, res) => {
         ventas_hoy: num(deHoy.ventas), pedidos_hoy: deHoy.pedidos,
         pendientes_cobro: { pedidos: pendientes.pedidos, monto: num(pendientes.monto) },
         cancelados: cancelados.pedidos,
-        devoluciones: { devoluciones: dev.DEVOLUCION || 0, cambios: (dev.CAMBIO_TALLA || 0) + (dev.CAMBIO_VARIANTE || 0) }
+        devoluciones: { devoluciones: dev.DEVOLUCION || 0, cambios: (dev.CAMBIO_TALLA || 0) + (dev.CAMBIO_VARIANTE || 0) },
+        // Los precios incluyen IVA: se desglosa del total vendido.
+        descuentos: num(kpi.descuentos), envios: num(kpi.envios),
+        iva, iva_porcentaje: IVA_PORCENTAJE, ventas_sin_iva: num(Number(kpi.ventas) - iva),
+        reembolsos: { cantidad: reembolsos.cantidad, monto: num(reembolsos.monto) },
+        ventas_netas: num(Number(kpi.ventas) - Number(reembolsos.monto))
       },
+      por_cupon: conDinero(porCupon, ["descuento", "ventas"]),
       por_sucursal: conDinero(porSucursal, ["ventas"]),
       por_dia: conDinero(porDia, ["ventas"]),
       por_prenda: conDinero(porPrenda, ["ventas"]),

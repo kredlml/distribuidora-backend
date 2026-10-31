@@ -23,16 +23,23 @@ module.exports = (sequelize, Sequelize) => {
     // Código de un solo uso que entrega caja (en persona) para que un cliente de mostrador active
     // su cuenta web con el mismo correo y conserve su historial. Se guarda solo su hash SHA-256.
     codigo_activacion: { type: Sequelize.STRING(64), allowNull: true },
-    codigo_activacion_expira: { type: Sequelize.DATE, allowNull: true }
+    codigo_activacion_expira: { type: Sequelize.DATE, allowNull: true },
+    // "Olvidé mi contraseña": hash SHA-256 del enlace de un solo uso enviado al correo y su vencimiento.
+    reset_token_hash: { type: Sequelize.STRING(64), allowNull: true },
+    reset_expira: { type: Sequelize.DATE, allowNull: true },
+    // Va dentro del token de la tienda (v): al cambiar o restablecer la contraseña aumenta y las
+    // sesiones abiertas en otros dispositivos dejan de valer.
+    token_version: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 0 }
   }, {
     tableName: 'Cliente',
     timestamps: false,
-    // El hash y el código nunca salen en consultas normales (listados, includes); el login usa
-    // el scope conPassword y la activación, conCodigo.
-    defaultScope: { attributes: { exclude: ['password', 'codigo_activacion', 'codigo_activacion_expira'] } },
+    // El hash y los códigos nunca salen en consultas normales (listados, includes); el login usa
+    // el scope conPassword, la activación conCodigo y el restablecimiento conReset.
+    defaultScope: { attributes: { exclude: ['password', 'codigo_activacion', 'codigo_activacion_expira', 'reset_token_hash', 'reset_expira', 'token_version'] } },
     scopes: {
-      conPassword: { attributes: { include: ['password'], exclude: ['codigo_activacion', 'codigo_activacion_expira'] } },
-      conCodigo: { attributes: { include: ['password', 'codigo_activacion', 'codigo_activacion_expira'] } }
+      conPassword: { attributes: { include: ['password', 'token_version'], exclude: ['codigo_activacion', 'codigo_activacion_expira', 'reset_token_hash', 'reset_expira'] } },
+      conCodigo: { attributes: { include: ['password', 'codigo_activacion', 'codigo_activacion_expira', 'token_version'], exclude: ['reset_token_hash', 'reset_expira'] } },
+      conReset: { attributes: { include: ['password', 'reset_token_hash', 'reset_expira', 'token_version'], exclude: ['codigo_activacion', 'codigo_activacion_expira'] } }
     }
   });
   return Cliente;

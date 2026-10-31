@@ -15,6 +15,10 @@ const {
   registrarCobroExitoso
 } = require("../utils/facturacion");
 const devoluciones = require("./devolucion.controller.js");
+const { esPagoStripeReal, centavos, anularPagoPendiente, cancelarIntentoStripe } = require("../utils/pagosStripe");
+const { venceEl, estaVencido, HORAS_PEDIDO_PENDIENTE } = require("../utils/vencimientos");
+const { desglosePedido } = require("../utils/precios");
+const { cotizar } = require("../utils/cotizacion");
 
 // Tienda en línea para clientes. Reutiliza las reglas del panel: el total lo calculan los
 // hooks de DetallePedido, los estados siguen la máquina de estados del pedido y las
@@ -23,8 +27,14 @@ const devoluciones = require("./devolucion.controller.js");
 const MAX_PEDIDOS_PENDIENTES = 3; // evita que una cuenta acapare stock con pedidos sin pagar
 const MAX_UNIDADES_POR_LINEA = 20;
 
-const responderError = (res, error, porDefecto) =>
-  res.status(error.status || 500).send({ message: error.message || porDefecto });
+// Errores previstos (400, 404, 409…) con su mensaje; los inesperados (500) con un mensaje genérico:
+// el detalle interno queda en el registro de errores, nunca se muestra a la clienta.
+const responderError = (res, error, porDefecto) => {
+  if (error.status && error.status < 500) return res.status(error.status).send({ message: error.message || porDefecto });
+  res.locals.pilaError = error && error.stack;
+  res.locals.mensajeError = error && error.message; // para el registro de errores
+  res.status(error.status || 500).send({ message: error.status ? error.message : porDefecto });
+};
 
 // ---------------------------------------------------------------------------
 // Catálogo (público)
@@ -191,9 +201,11 @@ exports.crearPedido = async (req, res) => {
     }
 
     const cliente = await db.cliente.findByPk(req.clienteId, { transaction: t, lock: t.LOCK.UPDATE });
-    const direccion = String(b.direccion_entrega || cliente.direccion || "").trim();
-    if (!direccion) {
-      throw errorHttp(400, "Indica la dirección de entrega.");
+    // Retiro en sucursal: sin dirección y sin costo de envío.
+    const retiro = b.retiro_en_sucursal === true;
+    const direccion = retiro ? "" : String(b.direccion_entrega || cliente.direccion || "").trim();
+    if (!direccion && !retiro) {
+      throw errorHttp(400, "Indica la dirección de entrega o elige retirar en la sucursal.");
     }
     if (direccion.length > 200) {
       throw errorHttp(400, "La dirección de entrega no puede superar los 200 caracteres.");
@@ -210,12 +222,14 @@ exports.crearPedido = async (req, res) => {
       id_sucursal: b.id_sucursal,
       lineasRecibidas: b.detalles,
       id_empleado: null,
-      direccion_entrega: direccion,
-      origen: 'desde la tienda en línea'
+      direccion_entrega: direccion || null,
+      origen: retiro ? 'desde la tienda en línea (retiro en sucursal)' : 'desde la tienda en línea',
+      cupon: typeof b.cupon === 'string' && b.cupon.trim() ? b.cupon : undefined,
+      envio: { retiro }
     }, t);
 
     await t.commit();
-    res.status(201).send({ message: "Pedido creado. Completa el pago para procesarlo.", pedido });
+    res.status(201).send({ message: HORAS_PEDIDO_PENDIENTE > 0 ? `Pedido creado. Págalo en las próximas ${HORAS_PEDIDO_PENDIENTE} horas o se cancelará.` : "Pedido creado. Completa el pago para procesarlo.", pedido: { ...pedido.toJSON(), pago_vence: venceEl(pedido) } });
   } catch (error) {
     await t.rollback();
     responderError(res, error, "Error al crear el pedido.");
@@ -223,6 +237,17 @@ exports.crearPedido = async (req, res) => {
 };
 
 // GET /api/tienda/pedidos
+// POST /api/tienda/cotizar — { id_sucursal, detalles, cupon?, retiro_en_sucursal? }: cuánto se
+// pagaría (subtotal, descuento, envío, total, IVA) antes de confirmar el pedido.
+exports.cotizar = async (req, res) => {
+  try {
+    const b = req.body || {};
+    res.send(await cotizar({ detalles: b.detalles, id_sucursal: b.id_sucursal, cupon: b.cupon, envio: { retiro: b.retiro_en_sucursal === true } }));
+  } catch (error) {
+    responderError(res, error, "Error al cotizar el pedido.");
+  }
+};
+
 exports.misPedidos = async (req, res) => {
   try {
     const pedidos = await Pedido.findAll({
@@ -234,11 +259,14 @@ exports.misPedidos = async (req, res) => {
       ],
       order: [['id_pedido', 'DESC']]
     });
-    res.send(pedidos);
+    res.send(pedidos.map((p) => ({ ...p.toJSON(), pago_vence: venceEl(p) })));
   } catch (error) {
     responderError(res, error, "Error al recuperar tus pedidos.");
   }
 };
+
+// Lo que la clienta ve de sus reembolsos (sin referencias internas de caja ni ids de Stripe).
+const ATRIBUTOS_REEMBOLSO = ['id_reembolso', 'id_devolucion', 'metodo', 'monto', 'estado', 'fecha_creacion', 'fecha_completado'];
 
 // GET /api/tienda/pedidos/:id — detalle con líneas, pagos, saldo y devoluciones asociadas.
 exports.miPedido = async (req, res) => {
@@ -249,7 +277,9 @@ exports.miPedido = async (req, res) => {
         { model: db.detalle_pedido,
           include: [{ model: Producto, attributes: ['id_producto', 'id_producto_padre', 'nombre', 'talla', 'color', 'imagen_url'], include: [INCLUDE_FOTO_PADRE] }] },
         { model: Pago, attributes: ATRIBUTOS_PAGO },
-        { model: db.devolucion, attributes: ['id_devolucion', 'tipo', 'estado', 'fecha_solicitud'] }
+        { model: db.devolucion, attributes: ['id_devolucion', 'tipo', 'estado', 'fecha_solicitud'] },
+        { model: db.reembolso, attributes: ATRIBUTOS_REEMBOLSO },
+        { model: db.cupon, attributes: ['codigo', 'descripcion'] }
       ],
       order: [[db.detalle_pedido, 'id_detalle_pedido', 'ASC'], [Pago, 'id_pago', 'ASC']]
     });
@@ -263,6 +293,10 @@ exports.miPedido = async (req, res) => {
     const politica = await devoluciones.politicaDevolucion(pedido);
     res.send({
       ...pedido.toJSON(),
+      // Hasta cuándo puede pagarse (solo PENDIENTE); después se cancela automáticamente.
+      pago_vence: venceEl(pedido),
+      // Subtotal de prendas, descuento del cupón, envío, total e IVA incluido.
+      desglose: desglosePedido(pedido, (pedido.DetallePedidos || []).reduce((s, l) => s + Number(l.subtotal), 0)),
       devolucion_permitida: politica.permite,
       devolucion_motivo: politica.motivo,
       devolucion_vence: politica.vence,
@@ -277,42 +311,6 @@ exports.miPedido = async (req, res) => {
   }
 };
 
-// Marca FALLIDO un pago PENDIENTE solo si sigue PENDIENTE (lo pudo completar el webhook).
-async function anularPagoPendiente(pago, motivo, t) {
-  const [n] = await Pago.update({ estado_pago: 'FALLIDO' }, { where: { id_pago: pago.id_pago, estado_pago: 'PENDIENTE' }, transaction: t });
-  if (n) {
-    await registrarAuditoria({
-      id_empleado: null,
-      accion: 'PAGO_ANULADO',
-      tabla_afectada: 'Pago',
-      registro_afectado_id: pago.id_pago,
-      detalles: `Pago #${pago.id_pago} (STRIPE) de ${Number(pago.monto).toFixed(2)} anulado: ${motivo}.`
-    }, t);
-  }
-}
-
-const esPagoStripeReal = (pago) => pago.metodo_pago === 'STRIPE' && pago.id_transaccion_externa && !pago.id_transaccion_externa.startsWith('pi_simulado_');
-const centavos = (monto) => Math.round(Number(monto) * 100);
-
-// Cancela en Stripe el PaymentIntent de un pago. Si Stripe no lo permite se consulta su estado
-// real: 'cancelado' (ya lo estaba), 'cobrado' (succeeded) o 'procesando'.
-async function cancelarIntentoStripe(pago) {
-  try {
-    await stripe.paymentIntents.cancel(pago.id_transaccion_externa);
-    return 'cancelado';
-  } catch (errorCancelar) {
-    let pi;
-    try {
-      pi = await stripe.paymentIntents.retrieve(pago.id_transaccion_externa);
-    } catch (stripeError) {
-      throw errorHttp(502, "No se pudo consultar el pago en Stripe: " + stripeError.message);
-    }
-    if (pi.status === 'canceled') return 'cancelado';
-    if (pi.status === 'succeeded') return 'cobrado';
-    if (pi.status === 'processing') return 'procesando';
-    throw errorHttp(502, "Stripe no permitió cancelar el cobro: " + errorCancelar.message);
-  }
-}
 
 // POST /api/tienda/pedidos/:id/cancelar — solo mientras siga PENDIENTE de pago.
 // Si el cliente había iniciado un pago con tarjeta, se cancela también en Stripe.
@@ -323,7 +321,7 @@ exports.cancelarPedido = async (req, res) => {
 
     // Orden de bloqueo: primero los pagos, luego el pedido (igual que el webhook).
     const pendientes = await Pago.findAll({
-      where: { id_pedido: req.params.id, estado_pago: 'PENDIENTE' },
+      where: { id_pedido: req.params.id, estado_pago: 'PENDIENTE' }, order: [['id_pago', 'ASC']],
       transaction: t,
       lock: t.LOCK.UPDATE
     });
@@ -385,7 +383,7 @@ exports.iniciarPago = async (req, res) => {
     await pedidoPropio(req, { transaction: t });
     // Orden de bloqueo Pago -> Pedido (igual que webhook, confirmarPago y cancelarPedido).
     const bloqueados = await Pago.findAll({
-      where: { id_pedido: req.params.id, estado_pago: 'PENDIENTE', metodo_pago: 'STRIPE' },
+      where: { id_pedido: req.params.id, estado_pago: 'PENDIENTE', metodo_pago: 'STRIPE' }, order: [['id_pago', 'ASC']],
       transaction: t,
       lock: t.LOCK.UPDATE
     });
@@ -393,6 +391,10 @@ exports.iniciarPago = async (req, res) => {
     const pedido = await Pedido.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
     if (pedido.estado !== 'PENDIENTE') {
       throw errorHttp(400, `Este pedido ya no está pendiente de pago (estado: ${pedido.estado}).`);
+    }
+    // Venció el plazo para pagarlo: se cancelará en la próxima revisión (no se inicia un cobro nuevo).
+    if (estaVencido(pedido) && bloqueados.length === 0) {
+      throw errorHttp(400, `El plazo de ${HORAS_PEDIDO_PENDIENTE} horas para pagar este pedido venció. Haz un pedido nuevo.`);
     }
     const total = Number(pedido.total);
     if (total <= 0) throw errorHttp(400, "El pedido no tiene productos.");
@@ -623,7 +625,7 @@ exports.miDevolucion = async (req, res) => {
   try {
     const devolucion = await db.devolucion.findByPk(req.params.id, {
       attributes: ['id_devolucion', 'id_pedido', 'tipo', 'motivo', 'estado', 'observacion', 'fecha_solicitud', 'fecha_actualizacion'],
-      include: [INCLUDE_DETALLES_DEVOLUCION]
+      include: [INCLUDE_DETALLES_DEVOLUCION, { model: db.reembolso, attributes: ATRIBUTOS_REEMBOLSO }]
     });
     if (!devolucion || !(await db.devolucion.count({ where: { id_devolucion: req.params.id, id_cliente: req.clienteId } }))) {
       throw errorHttp(404, "No se encontró la devolución.");

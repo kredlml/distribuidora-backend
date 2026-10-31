@@ -132,7 +132,12 @@ function totalComprometido(id_pedido, t) {
 // y pasa automáticamente a PROCESADO. Lo usan el registro/confirmación de pagos y el webhook.
 async function procesarPedidoSiEstaPagado(id_pedido, id_empleado, t) {
   const pedido = await db.pedido.findByPk(id_pedido, { transaction: t, lock: t.LOCK.UPDATE });
-  if (!pedido || pedido.estado !== 'PENDIENTE' || Number(pedido.total) <= 0) {
+  if (!pedido || pedido.estado !== 'PENDIENTE') {
+    return pedido;
+  }
+  // Total 0 solo cuenta como pagado si tiene prendas (un cupón cubrió toda la compra); un pedido
+  // vacío sigue pendiente.
+  if (Number(pedido.total) <= 0 && !(await db.detalle_pedido.count({ where: { id_pedido }, transaction: t }))) {
     return pedido;
   }
 
@@ -151,6 +156,8 @@ async function procesarPedidoSiEstaPagado(id_pedido, id_empleado, t) {
     registro_afectado_id: pedido.id_pedido,
     detalles: `Pedido #${pedido.id_pedido} cambiado de PENDIENTE a PROCESADO al confirmarse el pago (pagado ${pagado.toFixed(2)} de ${Number(pedido.total).toFixed(2)}).`
   }, t);
+  // El correo sale solo si la transacción se confirma.
+  t.afterCommit(() => require("./notificaciones").pedidoPagado(pedido.id_pedido));
 
   return pedido;
 }
@@ -160,7 +167,9 @@ async function procesarPedidoSiEstaPagado(id_pedido, id_empleado, t) {
 // Las líneas del mismo producto se unen y se procesan en orden de id_producto para que todas
 // las ventas bloqueen el inventario en el mismo orden (sin deadlocks). El precio sale del
 // catálogo y el total lo calculan los hooks de DetallePedido.
-async function crearPedido({ id_cliente, id_sucursal, lineasRecibidas, id_empleado, direccion_entrega, origen }, t) {
+// `cupon`: código de descuento (opcional; si no aplica, 400). `envio`: solo la tienda en línea
+// ({ retiro: true } para retiro en sucursal); en mostrador no hay envío.
+async function crearPedido({ id_cliente, id_sucursal, lineasRecibidas, id_empleado, direccion_entrega, origen, cupon, envio }, t) {
   if (!id_cliente || !id_sucursal || !Array.isArray(lineasRecibidas) || lineasRecibidas.length === 0
     || lineasRecibidas.some(l => !l || !l.id_producto || !l.cantidad)) {
     throw errorHttp(400, "Faltan datos obligatorios para procesar la venta.");
@@ -213,15 +222,34 @@ async function crearPedido({ id_cliente, id_sucursal, lineasRecibidas, id_emplea
     }, { transaction: t });
   }
 
+  // Cupón y envío: se aplican con las líneas ya guardadas y se recalcula el total una vez (el
+  // envío a domicilio lo calcula recalcularPedido; el retiro en sucursal y el mostrador no pagan).
+  if (cupon || envio) {
+    const { usarCupon } = require("./cupones");
+    const { recalcularPedido } = require("./totales");
+    const sumaLineas = Number(await db.detalle_pedido.sum("subtotal", { where: { id_pedido: pedido.id_pedido }, transaction: t }) || 0);
+    if (cupon) await usarCupon(pedido, cupon, sumaLineas, t);
+    await recalcularPedido(db.sequelize, pedido.id_pedido, t);
+  }
+
   // El hook actualizó la fila en BD; se recarga para responder con el total real.
   await pedido.reload({ transaction: t });
+  // Un cupón que cubre toda la compra deja el total en 0: no hay nada que cobrar, queda pagado.
+  if (Number(pedido.total) === 0) {
+    await procesarPedidoSiEstaPagado(pedido.id_pedido, id_empleado, t);
+    await pedido.reload({ transaction: t });
+  }
 
+  const extras = [
+    Number(pedido.descuento) > 0 ? `descuento ${Number(pedido.descuento).toFixed(2)} (cupón ${String(cupon).trim().toUpperCase()})` : "",
+    Number(pedido.costo_envio) > 0 ? `envío ${Number(pedido.costo_envio).toFixed(2)}` : ""
+  ].filter(Boolean).join(", ");
   await registrarAuditoria({
     id_empleado,
     accion: 'PEDIDO_CREADO',
     tabla_afectada: 'Pedido',
     registro_afectado_id: pedido.id_pedido,
-    detalles: `Pedido #${pedido.id_pedido} creado${origen ? ' ' + origen : ''} con ${lineas.length} línea(s) por un total de ${Number(pedido.total).toFixed(2)}.`
+    detalles: `Pedido #${pedido.id_pedido} creado${origen ? ' ' + origen : ''} con ${lineas.length} línea(s) por un total de ${Number(pedido.total).toFixed(2)}${extras ? ` (${extras})` : ''}.`.slice(0, 255)
   }, t);
 
   return pedido;
@@ -259,12 +287,15 @@ async function cancelarPedido(pedido, { id_empleado, motivo }, t) {
 
   pedido.estado = 'CANCELADO';
   await pedido.save({ transaction: t });
+  // El uso del cupón se devuelve (otra clienta puede aprovecharlo si tenía límite).
+  await require("./cupones").liberarCupon(pedido, t);
 }
 
 // Stripe confirmó el cobro de un pago (webhook o sincronización desde la tienda). El pago debe
 // venir bloqueado y en PENDIENTE/FALLIDO. El dinero ya entró: si el pedido sigue PENDIENTE y el
-// monto cabe en el saldo, cuenta y el pedido puede pasar a PROCESADO; si no (pedido cancelado,
-// ya pagado o cobro de más), se registra igual pero queda marcado para reembolso.
+// monto cabe en el saldo, cuenta y el pedido puede pasar a PROCESADO; si no (pedido cancelado o
+// vencido, ya pagado o cobro de más), se registra igual y se le devuelve a la tarjeta
+// automáticamente (reembolso STRIPE que se pide a Stripe al confirmar la transacción).
 async function registrarCobroExitoso(pago, t) {
   const pedido = await db.pedido.findByPk(pago.id_pedido, { transaction: t, lock: t.LOCK.UPDATE });
   const saldo = pedido ? Math.round((Number(pedido.total) - await totalPagado(pedido.id_pedido, t)) * 100) / 100 : 0;
@@ -278,9 +309,13 @@ async function registrarCobroExitoso(pago, t) {
       accion: 'PAGO_REQUIERE_REEMBOLSO',
       tabla_afectada: 'Pago',
       registro_afectado_id: pago.id_pago,
-      detalles: `Stripe cobró ${Number(pago.monto).toFixed(2)} (pago #${pago.id_pago}) pero el pedido #${pago.id_pedido} ${pedido ? `está ${pedido.estado} con saldo ${saldo.toFixed(2)}` : 'no existe'}; debe reembolsarse.`
+      detalles: `Stripe cobró ${Number(pago.monto).toFixed(2)} (pago #${pago.id_pago}) pero el pedido #${pago.id_pedido} ${pedido ? `está ${pedido.estado} con saldo ${saldo.toFixed(2)}` : 'no existe'}; se reembolsa a la tarjeta.`
     }, t);
-    console.warn(`Stripe: el pago #${pago.id_pago} se cobró pero requiere reembolso.`);
+    console.warn(`Stripe: el pago #${pago.id_pago} se cobró pero no corresponde; se reembolsa.`);
+    if (pedido) {
+      const { reembolsarPagoStripe } = require("./reembolsos");
+      await reembolsarPagoStripe(pago, `El pedido estaba ${pedido.estado === 'PENDIENTE' ? 'ya cubierto' : pedido.estado} cuando se confirmó el cobro; se devuelve a la tarjeta.`, t);
+    }
     return pedido;
   }
 

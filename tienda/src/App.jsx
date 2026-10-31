@@ -7,8 +7,10 @@ import Catalogo from "./pages/Catalogo/Catalogo";
 import Checkout from "./pages/Checkout/Checkout";
 import Activar from "./pages/Cuenta/Activar";
 import Login from "./pages/Cuenta/Login";
+import Olvide from "./pages/Cuenta/Olvide";
 import Perfil from "./pages/Cuenta/Perfil";
 import Registro from "./pages/Cuenta/Registro";
+import Restablecer from "./pages/Cuenta/Restablecer";
 import DevolucionDetalle from "./pages/Devoluciones/DevolucionDetalle";
 import MisDevoluciones from "./pages/Devoluciones/MisDevoluciones";
 import SolicitarDevolucion from "./pages/Devoluciones/SolicitarDevolucion";
@@ -31,6 +33,8 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route path="registro" element={<Registro />} />
         <Route path="activar" element={<Activar />} />
+        <Route path="olvide" element={<Olvide />} />
+        <Route path="restablecer" element={<Restablecer />} />
         <Route path="checkout" element={privada(<Checkout />)} />
         <Route path="perfil" element={privada(<Perfil />)} />
         <Route path="pedidos" element={privada(<MisPedidos />)} />

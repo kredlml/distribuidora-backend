@@ -52,6 +52,11 @@ export default function NuevaVenta() {
   const [cantidad, setCantidad] = useState("1");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
+  // Cupón de descuento: el servidor calcula el descuento (y avisa si no aplica).
+  const [codigo, setCodigo] = useState("");
+  const [cupon, setCupon] = useState("");
+  const cot = useFetch(() => pedidosService.cotizar({ id_sucursal: Number(idSucursal) || undefined, detalles: lineas, cupon }),
+    [cupon, JSON.stringify(lineas), idSucursal], !!cupon && lineas.length > 0);
 
   const d = datos.data;
   // La sucursal guardada solo vale si sigue activa en la lista (la del empleado pudo desactivarse).
@@ -74,7 +79,11 @@ export default function NuevaVenta() {
   // El cliente elegido siempre queda en la lista aunque la búsqueda no lo incluya: así lo que se ve
   // es exactamente a quién se le vende.
   const clientesFiltrados = clientes.filter((c) => c === elegido || !texto || `${c.nombre} ${c.apellido} ${c.email || ""} ${c.telefono || ""}`.toLowerCase().includes(texto));
-  const total = lineas.reduce((s, l) => s + l.cantidad * Number(P[l.id_producto].precio_unitario), 0);
+  const subtotal = lineas.reduce((s, l) => s + l.cantidad * Number(P[l.id_producto].precio_unitario), 0);
+  const cuponOk = !!cupon && cot.data && cot.data.cupon && !cot.loading;
+  // Con un cupón aplicado no se vende hasta tener su cálculo vigente (si no, se cobraría sin descuento).
+  const calculandoCupon = !!cupon && lineas.length > 0 && (cot.loading || !!cot.error);
+  const total = cuponOk ? cot.data.total : subtotal;
   // Tras recargar (p.ej. otra caja vendió lo último), las líneas que superan el stock se marcan.
   const excedida = (l) => l.cantidad > (disponible[l.id_producto] || 0);
   const hayExcedidas = lineas.some(excedida);
@@ -101,7 +110,8 @@ export default function NuevaVenta() {
     setEnviando(true);
     try {
       // email_cliente: con él el servidor acepta a una clienta de otra sucursal encontrada por correo.
-      const r = await pedidosService.crear({ id_cliente: elegido.id_cliente, email_cliente: elegido.email || undefined, id_sucursal: Number(sucursal), detalles: lineas });
+      const r = await pedidosService.crear({ id_cliente: elegido.id_cliente, email_cliente: elegido.email || undefined, id_sucursal: Number(sucursal), detalles: lineas,
+        cupon: cupon && !(cot.data && cot.data.cupon_error) ? cupon : undefined });
       aviso(`Pedido #${r.pedido.id_pedido} creado. Registra el pago.`);
       navigate(`/pedidos/${r.pedido.id_pedido}?cobrar=1`, { replace: true });
     } catch (e) {
@@ -176,12 +186,28 @@ export default function NuevaVenta() {
               );
             })}
           </div>
+          <div className="agregar-linea sec">
+            <label className="sm muted">Cupón de descuento
+              <input className="field" value={codigo} maxLength={30} placeholder="Código (opcional)" onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setCupon(codigo.trim()); } }} />
+            </label>
+            <button type="button" className="btn" disabled={!codigo.trim()} onClick={() => setCupon(codigo.trim())}>Aplicar</button>
+            {cupon && <button type="button" className="btn" onClick={() => { setCupon(""); setCodigo(""); }}>Quitar</button>}
+          </div>
+          {cupon && cot.data && cot.data.cupon_error && <p className="err sm">{cot.data.cupon_error}</p>}
+          {cupon && cot.error && <p className="err sm">{cot.error}</p>}
+          {cuponOk && (
+            <>
+              <div className="fila-total sm"><span>Subtotal</span><span>{dinero(cot.data.subtotal)}</span></div>
+              <div className="fila-total sm"><span>Descuento (cupón {cot.data.cupon.codigo})</span><span>−{dinero(cot.data.descuento)}</span></div>
+            </>
+          )}
           <div className="fila-total grande"><span>Total</span><span>{dinero(total)}</span></div>
         </section>
 
         <div className="err" role="alert">{error}</div>
         <div className="ctl">
-          <button className="btn pri" disabled={enviando || !lineas.length || !elegido || hayExcedidas}>{enviando ? "Creando pedido…" : "Crear pedido y cobrar"}</button>
+          <button className="btn pri" disabled={enviando || !lineas.length || !elegido || hayExcedidas || calculandoCupon}>{enviando ? "Creando pedido…" : "Crear pedido y cobrar"}</button>
           {elegido && <span className="muted sm">Venta a {elegido.nombre} {elegido.apellido}, {dinero(total)}</span>}
         </div>
       </form>

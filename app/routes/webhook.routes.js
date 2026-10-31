@@ -4,7 +4,7 @@ module.exports = app => {
   var router = express.Router();
 
   
-  router.post("/", express.raw({ type: 'application/json' }), webhook.stripeWebhook);
+  router.post("/", express.raw({ type: 'application/json', inflate: false }), webhook.stripeWebhook);
 
   app.use('/api/webhook', router);
 };

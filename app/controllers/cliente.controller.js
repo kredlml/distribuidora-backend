@@ -4,8 +4,9 @@ const Cliente = db.cliente;
 const { registrarAuditoria } = require("../utils/auditoria");
 const { puestoDe } = require("../middlewares/authJwt.js");
 const { sucursalDe, whereClientesDeSucursal, clienteEnAlcance } = require("../utils/alcance");
+const { leerPaginacion, pagina, textoBusqueda, idBuscado } = require("../utils/paginacion");
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const { EMAIL_VALIDO: EMAIL_RE } = require("../utils/correo");
 // Código de activación web: 8 caracteres sin los que se confunden (0/O, 1/I/L), válido 72 horas.
 const ALFABETO_CODIGO = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const VIGENCIA_CODIGO_MS = 72 * 60 * 60 * 1000;
@@ -19,7 +20,7 @@ function generarCodigo() {
 
 // Datos que se pueden mostrar de un cliente: nunca el hash ni el código, sí si tiene cuenta web.
 function publico(cliente, tieneCuentaWeb) {
-  const { password, codigo_activacion, codigo_activacion_expira, ...datos } = cliente.get({ plain: true });
+  const { password, codigo_activacion, codigo_activacion_expira, reset_token_hash, reset_expira, token_version, ...datos } = cliente.get({ plain: true });
   return { ...datos, tiene_cuenta_web: tieneCuentaWeb !== undefined ? tieneCuentaWeb : !!password };
 }
 
@@ -102,13 +103,33 @@ exports.findAll = async (req, res) => {
       return res.send([{ id_cliente: c.id_cliente, nombre: c.nombre, apellido: c.apellido, email: c.email, activo: c.activo, tiene_cuenta_web: !!c.password }]);
     }
     const s = sucursalDe(req);
-    const data = await Cliente.scope("conPassword").findAll({
-      where: s === null ? {} : whereClientesDeSucursal(s),
-      order: [['id_cliente', 'ASC']]
-    });
-    res.send(data.map((c) => publico(c)));
+    const where = s === null ? {} : whereClientesDeSucursal(s);
+    const pag = leerPaginacion(req.query);
+    if (!pag) {
+      const data = await Cliente.scope("conPassword").findAll({ where, order: [['id_cliente', 'ASC']] });
+      return res.send(data.map((c) => publico(c)));
+    }
+    // Con paginación (listado del panel): búsqueda ?q= y ?filtro=web|mostrador|inactivos (por
+    // defecto, los activos), de los más nuevos a los más antiguos.
+    const Op = db.Sequelize.Op;
+    const condiciones = [where];
+    const filtro = req.query.filtro || "";
+    if (!["", "web", "mostrador", "inactivos"].includes(filtro)) return res.status(400).send({ message: "filtro inválido (web, mostrador o inactivos)." });
+    condiciones.push(filtro === "inactivos" ? { activo: false } : { activo: { [Op.ne]: false } });
+    if (filtro === "web") condiciones.push({ password: { [Op.ne]: null } });
+    if (filtro === "mostrador") condiciones.push({ password: null });
+    const like = textoBusqueda(req.query.q), id = idBuscado(req.query.q);
+    if (like) {
+      condiciones.push({ [Op.or]: [
+        ...(id ? [{ id_cliente: id }] : []),
+        db.sequelize.where(db.sequelize.fn("concat_ws", " ", db.sequelize.col("nombre"), db.sequelize.col("apellido")), { [Op.iLike]: like }),
+        { email: { [Op.iLike]: like } }, { telefono: { [Op.iLike]: like } }
+      ] });
+    }
+    const { rows, count } = await Cliente.scope("conPassword").findAndCountAll({ where: { [Op.and]: condiciones }, order: [['id_cliente', 'DESC']], limit: pag.limit, offset: pag.offset });
+    res.send(pagina(rows.map((c) => publico(c)), count, pag));
   } catch (error) {
-    res.status(500).send({ message: error.message || "Error al recuperar los clientes." });
+    res.status(error.status || 500).send({ message: error.message || "Error al recuperar los clientes." });
   }
 };
 
@@ -138,11 +159,14 @@ exports.update = async (req, res) => {
         return { status: 400, message: "Este cliente ya tiene cuenta en la tienda: su correo es su usuario y no se cambia desde el panel." };
       }
       const cambios = { ...datos };
-      // Si cambia el correo o se desactiva, un código de activación pendiente deja de valer
-      // (al reactivar hará falta uno nuevo).
+      // Si cambia el correo o se desactiva, un código de activación o un enlace de «olvidé mi
+      // contraseña» pendientes dejan de valer (al reactivar hará falta uno nuevo).
       if ((datos.email !== undefined && datos.email !== cliente.email) || datos.activo === false) {
         cambios.codigo_activacion = null; cambios.codigo_activacion_expira = null;
+        cambios.reset_token_hash = null; cambios.reset_expira = null;
       }
+      // Desactivar cierra sus sesiones abiertas: si luego se reactiva, los tokens viejos no vuelven a valer.
+      if (datos.activo === false && cliente.activo !== false) cambios.token_version = (cliente.token_version || 0) + 1;
       const diffs = Object.keys(datos).filter((k) => (cliente[k] ?? null) !== datos[k])
         .map((k) => `${k}: ${cliente[k] ?? "vacío"} → ${datos[k] ?? "vacío"}`);
       if (diffs.length) {

@@ -8,6 +8,7 @@ import * as devolucionesService from "../../services/devolucionesService";
 import { ACCION } from "../../utils/constants";
 import { fecha, fechaDe, humanizar, nombreCli, nombreEmp, observacion, prod } from "../../utils/format";
 import { PERMISOS, accionesDe, puede } from "../../utils/permisos";
+import Reembolsos from "../../components/Reembolsos";
 import AccionDialog from "./AccionDialog";
 
 export default function DevolucionDetalle() {
@@ -15,6 +16,7 @@ export default function DevolucionDetalle() {
   const { rol } = useAuth();
   const navigate = useNavigate();
   const [accion, setAccion] = useState(null);
+  const [version, setVersion] = useState(0);
 
   const { data, error, loading, reload } = useFetch(
     async () => {
@@ -59,6 +61,8 @@ export default function DevolucionDetalle() {
           <p className="muted sm sec">Esta devolución ya está cerrada.</p>
         )}
       </section>
+
+      {["REINTEGRADA", "CAMBIADA"].includes(d.estado) && <div className="sec"><Reembolsos filtro={{ id_devolucion: d.id_devolucion }} version={version} /></div>}
 
       <section className="card sec">
         <h2>Prendas</h2>
@@ -106,7 +110,7 @@ export default function DevolucionDetalle() {
           accion={accion}
           devolucion={d}
           onClose={() => setAccion(null)}
-          onDone={() => { setAccion(null); reload(); }}
+          onDone={() => { setAccion(null); reload(); setVersion((v) => v + 1); }}
         />
       )}
     </>
